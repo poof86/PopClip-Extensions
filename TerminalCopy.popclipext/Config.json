@@ -1,0 +1,10 @@
+{
+  "identifier": "com.popclip.extension.terminalcopy",
+  "name": "Copy +",
+  "description": "Detects and fixes hard line breaks from terminal text selections, intelligently preserving intentional formatting.",
+  "icon": "icon.png",
+  "requirements": ["text"],
+  "regex": "(?s).+[\\r\\n].+",
+  "popclipVersion": 3895,
+  "module": "terminal-copy.js"
+}
