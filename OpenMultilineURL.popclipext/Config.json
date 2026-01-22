@@ -4,6 +4,7 @@
   "description": "Opens URLs that span multiple lines (e.g., from terminal) by joining them into a single URL.",
   "icon": "iconify:mdi:link-plus",
   "requirements": ["text"],
+  "regex": "(?s)(https?://.*[\\r\\n].*)",
   "popclipVersion": 3895,
   "module": "open-multiline-url.js",
   "options": []

@@ -16,9 +16,14 @@ The native PopClip URL action would fail because it treats this as invalid due t
 ## Solution
 
 This extension:
-1. Detects when you select text (including multi-line text)
+1. **Only appears** when you select text that contains a URL pattern (`http://` or `https://`) spanning multiple lines
 2. Removes all line breaks from the selection
 3. Opens the resulting URL in your default browser
+
+**Smart Detection:** The extension won't interfere with the native PopClip URL opener. It only shows when:
+- The selected text contains `http://` or `https://`
+- The text spans multiple lines (contains line breaks)
+- This ensures single-line URLs continue to use the native handler
 
 ## Icon
 
@@ -36,15 +41,26 @@ The extension displays a link icon with a plus symbol (⛓️➕) to distinguish
 2. The "Open Multiline URL" action will appear in the PopClip menu
 3. Click it to open the joined URL
 
-## Example
+## Examples
 
-**Before (broken URL with line breaks):**
+### Multi-line URL (Extension Appears)
+
+**Selected text:**
 ```
 https://github.com/pilotmoon/PopClip-Extensions/
 blob/master/README.md
 ```
 
-**After joining:** Opens `https://github.com/pilotmoon/PopClip-Extensions/blob/master/README.md` correctly in your browser.
+**Result:** The "Open Multiline URL" action appears with the link-plus icon. Clicking it opens `https://github.com/pilotmoon/PopClip-Extensions/blob/master/README.md` correctly in your browser.
+
+### Single-line URL (Extension Hidden)
+
+**Selected text:**
+```
+https://github.com/pilotmoon/PopClip-Extensions/blob/master/README.md
+```
+
+**Result:** The extension doesn't appear. Use the native PopClip "Open URL" action instead.
 
 ## Requirements
 
@@ -55,7 +71,8 @@ blob/master/README.md
 
 - **Language:** JavaScript
 - **Icon:** Material Design Icons (mdi:link-plus)
-- **Requirements:** Text selection
+- **Detection Pattern:** `(?s)(https?://.*[\r\n].*)` - Matches URLs containing line breaks
+- **Requirements:** Text selection with URL pattern and line breaks
 
 ## License
 
