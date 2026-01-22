@@ -63,7 +63,9 @@ These can ONLY be in Config.json, never overridden by module:
 ## Icons
 - PNG format: 256x256px minimum, black on transparent
 - Inline SVG: `"icon": "data:image/svg+xml,..."`
-- Iconify reference: `"icon": "iconify:mdi:link-plus"`
+- Iconify reference: `"icon": "iconify:mdi:link-variant-plus"`
+- Icon names: Check [Iconify](https://icon-sets.iconify.design/) for available icons
+- Note: Not all Iconify icons may work - test to ensure they display correctly
 
 ## TypeScript Setup (Optional)
 ```bash
@@ -87,6 +89,7 @@ Create `tsconfig.json`:
 - Trying to override static properties from module code
 - Not handling null/undefined returns in action functions
 - Including empty `options` array in Config.json (omit the field entirely if no options needed)
+- Using incorrect Iconify icon names (e.g., `mdi:link-plus` may not exist, use `mdi:link-variant-plus` instead)
 
 ## Resources
 - [Official PopClip Extensions](https://github.com/pilotmoon/PopClip-Extensions)
