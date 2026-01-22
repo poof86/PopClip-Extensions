@@ -5,10 +5,19 @@ Key findings and best practices for developing PopClip extensions.
 ## JavaScript Module Format
 
 ### .js Files (JavaScript)
-- **MUST use CommonJS syntax**: `module.exports = ...`
+- **MUST use CommonJS syntax**: `exports.action = ...` or `module.exports = ...`
 - **CANNOT use ES6 modules**: No `export default`, `export const`, or `import`
 - No build process required - loaded directly by PopClip
-- Example: `module.exports = async (input, options, context) => { ... }`
+- **Recommended pattern** (matches official examples):
+  ```javascript
+  exports.icon = "iconify:mdi:icon-name";  // Optional: override Config.json icon
+
+  exports.action = (input) => {
+    // Your code here
+    popclip.pasteText(result);  // or popclip.openUrl(url), etc.
+  };
+  ```
+- Alternative pattern: `module.exports = async (input, options, context) => { ... }`
 
 ### .ts Files (TypeScript)
 - **Can use ES6 syntax**: `export default`, `export const`, `import`
@@ -85,6 +94,7 @@ Create `tsconfig.json`:
 
 ## Common Pitfalls
 - Using ES6 syntax in .js files (use .ts instead or switch to CommonJS)
+- Using `module.exports =` instead of `exports.action =` (prefer the latter, matches official examples)
 - Forgetting `(?s)` flag for multiline regex patterns
 - Trying to override static properties from module code
 - Not handling null/undefined returns in action functions
