@@ -70,7 +70,7 @@ https://github.com/pilotmoon/PopClip-Extensions/blob/master/README.md
 ## Technical Details
 
 - **Language:** JavaScript
-- **Icon:** Material Design Icons (mdi:link-variant-plus)
+- **Icon:** Custom PNG (link with plus symbol)
 - **Detection Pattern:** `(?s)(https?://.*[\r\n].*)` - Matches URLs containing line breaks
 - **Requirements:** Text selection with URL pattern and line breaks
 

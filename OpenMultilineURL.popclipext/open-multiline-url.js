@@ -9,8 +9,6 @@
  * - The selected text spans multiple lines
  */
 
-exports.icon = "iconify:mdi:link-variant-plus";
-
 exports.action = (input) => {
   // Get the selected text and remove all line breaks
   const joinedUrl = input.text

@@ -2,7 +2,7 @@
   "identifier": "com.popclip.extension.openmultilineurl",
   "name": "Open Multiline URL",
   "description": "Opens URLs that span multiple lines (e.g., from terminal) by joining them into a single URL.",
-  "icon": "iconify:mdi:link-variant-plus",
+  "icon": "icon.png",
   "requirements": ["text"],
   "regex": "(?s)(https?://.*[\\r\\n].*)",
   "popclipVersion": 3895,

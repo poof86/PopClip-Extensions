@@ -70,11 +70,15 @@ These can ONLY be in Config.json, never overridden by module:
 - Original text always available via `input.text`
 
 ## Icons
-- PNG format: 256x256px minimum, black on transparent
+- **PNG format (RECOMMENDED)**: 256x256px minimum, black on transparent background
+  - Place PNG file in extension directory (e.g., `icon.png`)
+  - Reference in Config.json: `"icon": "icon.png"`
+  - Most reliable method for icon display
 - Inline SVG: `"icon": "data:image/svg+xml,..."`
 - Iconify reference: `"icon": "iconify:mdi:link-variant-plus"`
-- Icon names: Check [Iconify](https://icon-sets.iconify.design/) for available icons
-- Note: Not all Iconify icons may work - test to ensure they display correctly
+  - Icon names: Check [Iconify](https://icon-sets.iconify.design/) for available icons
+  - Note: Iconify icons may not display reliably - prefer PNG files when possible
+- Avoid using `exports.icon` in module when icon is in Config.json
 
 ## TypeScript Setup (Optional)
 ```bash
@@ -99,7 +103,8 @@ Create `tsconfig.json`:
 - Trying to override static properties from module code
 - Not handling null/undefined returns in action functions
 - Including empty `options` array in Config.json (omit the field entirely if no options needed)
-- Using incorrect Iconify icon names (e.g., `mdi:link-plus` may not exist, use `mdi:link-variant-plus` instead)
+- Using Iconify icon references instead of PNG files (Iconify icons may not display reliably - use PNG when possible)
+- Using `exports.icon` in module when icon is already specified in Config.json
 
 ## Resources
 - [Official PopClip Extensions](https://github.com/pilotmoon/PopClip-Extensions)
