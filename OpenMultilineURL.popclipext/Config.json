@@ -6,6 +6,5 @@
   "requirements": ["text"],
   "regex": "(?s)(https?://.*[\\r\\n].*)",
   "popclipVersion": 3895,
-  "module": "open-multiline-url.js",
-  "options": []
+  "module": "open-multiline-url.js"
 }

@@ -37,6 +37,12 @@ These can ONLY be in Config.json, never overridden by module:
 - `macosVersion`
 - `entitlements`
 
+### Options Field
+- Used to define user-configurable settings for the extension
+- **Must be omitted if not needed** - don't include empty array `"options": []`
+- If present, should contain option definition objects
+- Example: `"options": [{"identifier": "domain", "type": "multiple", "label": "Service", "values": ["is.gd", "v.gd"]}]`
+
 ## Conditional Display
 
 ### Requirements Array
@@ -80,6 +86,7 @@ Create `tsconfig.json`:
 - Forgetting `(?s)` flag for multiline regex patterns
 - Trying to override static properties from module code
 - Not handling null/undefined returns in action functions
+- Including empty `options` array in Config.json (omit the field entirely if no options needed)
 
 ## Resources
 - [Official PopClip Extensions](https://github.com/pilotmoon/PopClip-Extensions)
