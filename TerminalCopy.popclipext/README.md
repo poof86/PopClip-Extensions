@@ -15,12 +15,19 @@ A PopClip extension that intelligently detects and fixes hard line breaks caused
 
 ## How It Works
 
-The extension only appears when you select text that contains line breaks (multiple lines). When activated, it:
+The extension **only appears** when terminal-width line breaks are detected in the selected text. Specifically, it looks for:
+
+- URLs spanning multiple lines (e.g., from terminal output), OR
+- Text with at least 2 lines of similar length (> 50 chars) that suggest terminal wrapping
+
+When the action appears and you activate it:
 
 1. Detects if the text is a URL spanning multiple lines → removes all breaks
 2. For other text, analyzes the line lengths to deduce terminal width
 3. Intelligently removes artificial line breaks while preserving intentional formatting
 4. Copies the cleaned text to your clipboard
+
+The extension **will NOT appear** for regular multi-line text without terminal-width patterns (e.g., manually typed paragraphs, poetry, or short lines).
 
 ## Installation
 

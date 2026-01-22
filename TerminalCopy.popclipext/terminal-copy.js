@@ -7,19 +7,61 @@
  *
  * The extension only appears when:
  * - Text is selected
- * - The text contains line breaks (multiple lines)
+ * - Terminal-width line breaks are detected (common line lengths)
  *
  * Based on Better Touch Tool clipboard processing logic.
  */
 
-exports.action = (input) => {
-  const clipboardContentString = input.text;
+/**
+ * Detect if text has terminal-width line breaks
+ */
+function hasTerminalLineBreaks(text) {
+  // Must have line breaks
+  if (!text || !/[\r\n]/.test(text)) {
+    return false;
+  }
 
+  // If it's a URL spanning multiple lines, that counts
+  if (/^https?:\/\//.test(text.trim()) && /[\r\n]/.test(text)) {
+    return true;
+  }
+
+  // Check for common line lengths (terminal wrapping)
+  const lines = text.split(/\n/);
+
+  // Need at least 2 lines
+  if (lines.length < 2) {
+    return false;
+  }
+
+  // Get lengths of lines that are likely full-width (> 50 chars)
+  const lengths = lines.map(l => l.length).filter(n => n > 50);
+
+  // Need at least 2 substantial lines
+  if (lengths.length < 2) {
+    return false;
+  }
+
+  // Count occurrences of each length (with ±3 tolerance)
+  const buckets = {};
+  lengths.forEach(len => {
+    // Group similar lengths together (within 3 chars)
+    const bucket = Math.round(len / 3) * 3;
+    buckets[bucket] = (buckets[bucket] || 0) + 1;
+  });
+
+  // Check if we have at least 2 lines with similar lengths
+  const maxCount = Math.max(...Object.values(buckets));
+  return maxCount >= 2;
+}
+
+/**
+ * Process text to remove terminal line breaks
+ */
+function processTerminalText(clipboardContentString) {
   // If it's a URL that spans multiple lines, just remove all breaks
   if (/^https?:\/\//.test(clipboardContentString.trim())) {
-    const result = clipboardContentString.replace(/\n/g, '');
-    popclip.copyText(result);
-    return;
+    return clipboardContentString.replace(/\n/g, '');
   }
 
   // For other content, detect and remove terminal width breaks
@@ -107,6 +149,24 @@ exports.action = (input) => {
     return result.join('');
   });
 
-  const finalResult = processed.join('\n\n');
-  popclip.copyText(finalResult);
+  return processed.join('\n\n');
+}
+
+/**
+ * Population function - dynamically determines if action should appear
+ */
+exports.actions = (input) => {
+  // Only show action if terminal line breaks are detected
+  if (!hasTerminalLineBreaks(input.text)) {
+    return []; // No action - extension won't appear
+  }
+
+  // Return the action definition
+  return [{
+    title: 'Copy +',
+    code: () => {
+      const processed = processTerminalText(input.text);
+      popclip.copyText(processed);
+    }
+  }];
 };
