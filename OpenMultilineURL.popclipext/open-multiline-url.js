@@ -9,7 +9,7 @@
  * - The selected text spans multiple lines
  */
 
-export default async (input, options, context) => {
+module.exports = async (input, options, context) => {
   // Get the selected text
   const text = input.text;
 
