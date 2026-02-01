@@ -66,7 +66,7 @@ function processTerminalText(clipboardContentString) {
 
   // For other content, detect and remove terminal width breaks
   function deduceWidth(lines) {
-    // Get lengths of lines that are likely full-width (> 50 chars)
+    // Get lengths of lines including trailing spaces (raw terminal width)
     let lens = lines.map(l => l.length).filter(n => n > 50);
     if (lens.length === 0) return null;
 
@@ -75,6 +75,28 @@ function processTerminalText(clipboardContentString) {
     lens.forEach(n => counts[n] = (counts[n] || 0) + 1);
     let sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     return sorted.length ? parseInt(sorted[0][0], 10) : null;
+  }
+
+  /**
+   * Check if a line is actually wrapped (content fills the width)
+   * vs just padded with trailing spaces (content ended early)
+   */
+  function isWrappedLine(line, width) {
+    const rawLength = line.length;
+    const trimmedLength = line.trimEnd().length;
+
+    // Line must be at terminal width (within tolerance)
+    if (Math.abs(rawLength - width) > 3) {
+      return false;
+    }
+
+    // If trimmed length is also close to width, content fills the line → wrapped
+    // If trimmed length is much shorter, it's padded → not wrapped
+    const paddingAmount = rawLength - trimmedLength;
+
+    // Allow small amount of trailing space (1-2 chars) as tolerance
+    // but significant padding indicates line ended naturally
+    return paddingAmount <= 2;
   }
 
   function looksLikeCode(lines) {
@@ -119,30 +141,32 @@ function processTerminalText(clipboardContentString) {
     let result = [];
     for (let i = 0; i < lines.length; i++) {
       let line = lines[i];
+      let trimmedLine = line.trimEnd(); // Remove terminal padding
       let nextLine = lines[i + 1] || '';
       let isLastLine = i === lines.length - 1;
 
-      // If line is at terminal width (within 3 chars tolerance) and not last line
-      if (!isLastLine && Math.abs(line.length - width) <= 3) {
+      // Check if this line is truly wrapped (content fills width, not just padded)
+      if (!isLastLine && isWrappedLine(line, width)) {
         // Check if next line looks like a list item or new sentence
-        let nextIsListItem = /^\s*[-*•]\s/.test(nextLine);
-        let nextStartsNewSentence = /^[A-Z]/.test(nextLine.trim()) && /[.!?]$/.test(line);
+        let nextTrimmed = nextLine.trimEnd();
+        let nextIsListItem = /^\s*[-*•]\s/.test(nextTrimmed);
+        let nextStartsNewSentence = /^[A-Z]/.test(nextTrimmed.trim()) && /[.!?]$/.test(trimmedLine);
 
         if (nextIsListItem || nextStartsNewSentence) {
           // Keep the line break
-          result.push(line + '\n');
+          result.push(trimmedLine + '\n');
         } else {
           // This is likely a terminal wrap, join without line break
           // Add space unless line ends with URL-like character or hyphen
-          if (/[\/\-_=%&?]$/.test(line)) {
-            result.push(line); // No space for URL/word continuations
+          if (/[\/\-_=%&?]$/.test(trimmedLine)) {
+            result.push(trimmedLine); // No space for URL/word continuations
           } else {
-            result.push(line + ' '); // Space for prose
+            result.push(trimmedLine + ' '); // Space for prose
           }
         }
       } else {
-        // Keep this line break (short line or last line)
-        result.push(line);
+        // Keep this line break (short line, padded line, or last line)
+        result.push(trimmedLine);
         if (!isLastLine) result.push('\n');
       }
     }
