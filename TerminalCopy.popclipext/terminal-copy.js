@@ -13,6 +13,47 @@
  */
 
 /**
+ * Calculate the display width of a string in terminal columns.
+ * Wide characters (CJK, emoji, etc.) count as 2 columns.
+ */
+function displayWidth(str) {
+  let width = 0;
+  for (const char of str) {
+    const code = char.codePointAt(0);
+    // Wide characters: CJK, emoji, fullwidth forms, etc.
+    if (code >= 0x1100 && (
+      code <= 0x115F ||                      // Hangul Jamo
+      code === 0x2329 || code === 0x232A ||  // Angle brackets
+      (code >= 0x2E80 && code <= 0x3247) ||  // CJK Radicals, Kangxi, etc.
+      (code >= 0x3250 && code <= 0x4DBF) ||  // CJK, extensions
+      (code >= 0x4E00 && code <= 0xA4C6) ||  // CJK Unified Ideographs
+      (code >= 0xA960 && code <= 0xA97C) ||  // Hangul Jamo Extended-A
+      (code >= 0xAC00 && code <= 0xD7A3) ||  // Hangul Syllables
+      (code >= 0xF900 && code <= 0xFAFF) ||  // CJK Compatibility Ideographs
+      (code >= 0xFE10 && code <= 0xFE1F) ||  // Vertical forms
+      (code >= 0xFE30 && code <= 0xFE6F) ||  // CJK Compatibility Forms
+      (code >= 0xFF00 && code <= 0xFF60) ||  // Fullwidth Forms
+      (code >= 0xFFE0 && code <= 0xFFE6) ||  // Fullwidth symbols
+      (code >= 0x1F300 && code <= 0x1F64F) || // Misc Symbols, Emoticons
+      (code >= 0x1F680 && code <= 0x1F6FF) || // Transport/Map symbols
+      (code >= 0x1F900 && code <= 0x1F9FF) || // Supplemental Symbols
+      (code >= 0x1FA00 && code <= 0x1FA6F) || // Chess, extended-A
+      (code >= 0x1FA70 && code <= 0x1FAFF) || // Symbols extended-A
+      (code >= 0x20000 && code <= 0x2FFFD) || // CJK Extension B-F
+      (code >= 0x30000 && code <= 0x3FFFD)    // CJK Extension G+
+    )) {
+      width += 2;
+    } else if (code < 0x20 || (code >= 0x7F && code < 0xA0)) {
+      // Control characters have 0 width
+      width += 0;
+    } else {
+      width += 1;
+    }
+  }
+  return width;
+}
+
+/**
  * Detect if text has terminal-width line breaks
  */
 function hasTerminalLineBreaks(text) {
@@ -34,8 +75,8 @@ function hasTerminalLineBreaks(text) {
     return false;
   }
 
-  // Get lengths of lines that are likely full-width (> 50 chars)
-  const lengths = lines.map(l => l.length).filter(n => n > 50);
+  // Get display widths of lines that are likely full-width (> 50 columns)
+  const lengths = lines.map(l => displayWidth(l)).filter(n => n > 50);
 
   // Need at least 2 substantial lines
   if (lengths.length < 2) {
@@ -66,13 +107,13 @@ function processTerminalText(clipboardContentString) {
 
   // For other content, detect and remove terminal width breaks
   function deduceWidth(lines) {
-    // Get lengths of lines including trailing spaces (raw terminal width)
-    let lens = lines.map(l => l.length).filter(n => n > 50);
-    if (lens.length === 0) return null;
+    // Get display widths of lines including trailing spaces (raw terminal width)
+    let widths = lines.map(l => displayWidth(l)).filter(n => n > 50);
+    if (widths.length === 0) return null;
 
-    // Find the most common line length (terminal width)
+    // Find the most common display width (terminal width)
     let counts = {};
-    lens.forEach(n => counts[n] = (counts[n] || 0) + 1);
+    widths.forEach(n => counts[n] = (counts[n] || 0) + 1);
     let sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
     return sorted.length ? parseInt(sorted[0][0], 10) : null;
   }
@@ -82,17 +123,17 @@ function processTerminalText(clipboardContentString) {
    * vs just padded with trailing spaces (content ended early)
    */
   function isWrappedLine(line, width) {
-    const rawLength = line.length;
-    const trimmedLength = line.trimEnd().length;
+    const rawWidth = displayWidth(line);
+    const trimmedWidth = displayWidth(line.trimEnd());
 
     // Line must be at terminal width (within tolerance)
-    if (Math.abs(rawLength - width) > 3) {
+    if (Math.abs(rawWidth - width) > 3) {
       return false;
     }
 
-    // If trimmed length is also close to width, content fills the line → wrapped
-    // If trimmed length is much shorter, it's padded → not wrapped
-    const paddingAmount = rawLength - trimmedLength;
+    // If trimmed width is also close to width, content fills the line → wrapped
+    // If trimmed width is much shorter, it's padded → not wrapped
+    const paddingAmount = rawWidth - trimmedWidth;
 
     // Allow small amount of trailing space (1-2 chars) as tolerance
     // but significant padding indicates line ended naturally
