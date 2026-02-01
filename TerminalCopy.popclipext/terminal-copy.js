@@ -168,11 +168,13 @@ function processTerminalText(clipboardContentString) {
   let processed = paragraphs.map(block => {
     let lines = block.split('\n');
 
-    // Single line, nothing to do
-    if (lines.length === 1) return block;
+    // Single line, just trim trailing spaces
+    if (lines.length === 1) return block.trimEnd();
 
-    // If it looks like code or logs, preserve formatting
-    if (looksLikeCode(lines) || looksLikeLogOutput(lines)) return block;
+    // If it looks like code or logs, preserve line breaks but strip trailing spaces
+    if (looksLikeCode(lines) || looksLikeLogOutput(lines)) {
+      return lines.map(l => l.trimEnd()).join('\n');
+    }
 
     let width = deduceWidth(lines);
 
