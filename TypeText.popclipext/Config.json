@@ -5,5 +5,5 @@
   "icon": "symbol:keyboard",
   "requirements": ["paste"],
   "popclipVersion": 3895,
-  "module": "type-text.js"
+  "shell script": "type-text.sh"
 }
