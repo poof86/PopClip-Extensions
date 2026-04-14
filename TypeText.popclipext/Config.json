@@ -1,0 +1,9 @@
+{
+  "identifier": "com.popclip.extension.typetext",
+  "name": "Type",
+  "description": "Types the selected text as individual keystrokes instead of pasting. Useful for fields that block paste (e.g., password confirmation fields, remote desktops, VMs).",
+  "icon": "symbol:keyboard",
+  "requirements": ["text"],
+  "popclipVersion": 3895,
+  "module": "type-text.js"
+}
