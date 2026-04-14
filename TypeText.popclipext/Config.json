@@ -5,6 +5,5 @@
   "icon": "symbol:keyboard",
   "requirements": ["paste"],
   "popclipVersion": 3895,
-  "shell script": "type-text.sh",
-  "interpreter": "/bin/bash"
+  "applescript file": "type-text.applescript"
 }
