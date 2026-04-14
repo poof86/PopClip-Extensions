@@ -37,9 +37,17 @@ fi
 
 # Write sanitized text to a temp file so we can pass it to AppleScript without
 # any risk of shell injection — the user data never gets embedded in the script.
-TMPFILE=$(mktemp /tmp/popclip-typetext-XXXXXX)
+#
+# Hygiene:
+#   - Use $TMPDIR (per-user/per-session on macOS) rather than the global /tmp.
+#   - Immediately chmod 600 so no other process on the machine can read it,
+#     even in the brief window before we delete it (important for passwords).
+#   - Overwrite the file contents before removing it so sensitive data isn't
+#     left sitting in the inode after deletion.
+TMPFILE=$(mktemp "${TMPDIR:-/tmp}/popclip-typetext-XXXXXX")
+chmod 600 "$TMPFILE"
 printf '%s' "$SANITIZED" > "$TMPFILE"
-trap 'rm -f "$TMPFILE"' EXIT
+trap 'head -c "${#SANITIZED}" /dev/zero > "$TMPFILE" 2>/dev/null || true; rm -f "$TMPFILE"' EXIT
 
 # Type the text using System Events keystroke.
 # keystroke simulates real keyboard input — it works even in fields that
