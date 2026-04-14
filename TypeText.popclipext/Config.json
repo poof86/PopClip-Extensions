@@ -3,7 +3,7 @@
   "name": "Type",
   "description": "Types the selected text as individual keystrokes instead of pasting. Useful for fields that block paste (e.g., password confirmation fields, remote desktops, VMs).",
   "icon": "symbol:keyboard",
-  "requirements": ["text"],
+  "requirements": ["paste"],
   "popclipVersion": 3895,
   "module": "type-text.js"
 }
