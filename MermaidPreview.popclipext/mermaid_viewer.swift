@@ -148,8 +148,6 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
         // Transparent WebView renders on top of glass
         webView = WKWebView(frame: rect, configuration: config)
         webView.autoresizingMask = [.width, .height]
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
         webView.setValue(false, forKey: "drawsBackground")
 
         vfx.addSubview(webView)

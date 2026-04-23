@@ -252,8 +252,6 @@ class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         webView = WKWebView(frame: rect, configuration: config)
         webView.navigationDelegate = self
         webView.autoresizingMask = [.width, .height]
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
         webView.setValue(false, forKey: "drawsBackground")
 
         vfx.addSubview(webView)
