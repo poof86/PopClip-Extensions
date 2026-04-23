@@ -1,0 +1,12 @@
+name: Mermaid Preview
+identifier: com.popclip.extension.mermaid-preview
+description: Render selected Mermaid diagram syntax using mmdc (local) or mermaid.ink (fallback), displayed in a floating Quick Look window.
+icon: square filled M
+requirements: [text]
+regex: '(?s).*(```mermaid|graph\s|flowchart\s|sequenceDiagram[\s\n]|classDiagram[\s\n]|stateDiagram|erDiagram|gantt[\s\n]|pie[\s\n]|gitGraph|mindmap[\s\n]|timeline[\s\n]|xychart-beta[\s\n]|quadrantChart[\s\n]).*'
+actions:
+  - title: Mermaid Preview
+    icon: square filled M
+    interpreter: /bin/zsh
+    stoppable: true
+    shellScriptFile: mermaid_preview.zsh
