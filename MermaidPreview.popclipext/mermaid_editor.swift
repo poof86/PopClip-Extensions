@@ -3,201 +3,182 @@
 import Cocoa
 import WebKit
 
-private let htmlContent = #"""
+private let html = #"""
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; }
+  html, body { height: 100%; background: transparent; }
   body {
     display: flex;
+    height: 100vh;
     font-family: -apple-system, system-ui, sans-serif;
-    background: #1e1e1e;
-    color: #ccc;
+    color: rgba(255,255,255,0.9);
   }
 
-  /* ── Editor pane ───────────────────────────────────────── */
+  /* ── Editor pane ── */
   #editor-pane {
     width: 42%;
-    min-width: 200px;
     display: flex;
     flex-direction: column;
-    border-right: 1px solid #333;
+    padding: 16px 12px 16px 16px;
+    gap: 10px;
   }
   textarea {
     flex: 1;
-    padding: 16px;
+    padding: 14px;
     font-family: 'SF Mono', Menlo, 'Courier New', monospace;
     font-size: 13px;
     line-height: 1.6;
-    background: #1e1e1e;
-    color: #d4d4d4;
-    border: none;
+    background: rgba(0, 0, 0, 0.28);
+    color: rgba(255, 255, 255, 0.88);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
     resize: none;
     outline: none;
     tab-size: 2;
+  }
+  textarea:focus {
+    border-color: rgba(255, 255, 255, 0.22);
+    background: rgba(0, 0, 0, 0.35);
   }
   #toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
-    background: #252526;
-    border-top: 1px solid #333;
-    gap: 8px;
+    padding: 0 2px;
+    flex-shrink: 0;
   }
   #status {
     font-size: 11px;
-    color: #888;
-    min-width: 60px;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 0.02em;
   }
-  #status.error { color: #e05252; }
-  #status.ok    { color: #4ec94e; }
+  #status.ok    { color: rgba(100,220,130,0.8); }
+  #status.error { color: rgba(255,110,110,0.8); }
   button {
-    padding: 6px 18px;
-    background: #0a84ff;
-    color: white;
-    border: none;
-    border-radius: 6px;
+    padding: 7px 20px;
+    background: rgba(255, 255, 255, 0.15);
+    color: rgba(255,255,255,0.92);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 20px;
     cursor: pointer;
     font-size: 13px;
+    font-weight: 500;
+    transition: background 0.15s;
     white-space: nowrap;
   }
-  button:hover { background: #0060df; }
+  button:hover { background: rgba(255, 255, 255, 0.26); }
   button:active { transform: scale(0.97); }
 
-  /* ── Preview pane ──────────────────────────────────────── */
+  /* ── Divider ── */
+  #divider {
+    width: 1px;
+    background: rgba(255,255,255,0.08);
+    margin: 16px 0;
+    flex-shrink: 0;
+  }
+
+  /* ── Preview pane ── */
   #preview-pane {
     flex: 1;
     overflow: auto;
     padding: 28px;
-    background: #fff;
     display: flex;
     align-items: flex-start;
     justify-content: center;
   }
   #preview-inner { max-width: 100%; }
-  #output svg { max-width: 100%; height: auto; display: block; }
+  #output svg {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    filter: drop-shadow(0 2px 10px rgba(0,0,0,0.35));
+  }
   #error-msg {
-    color: #c0392b;
-    font-size: 12px;
+    color: rgba(255, 110, 110, 0.9);
     font-family: 'SF Mono', Menlo, monospace;
+    font-size: 12px;
     white-space: pre-wrap;
     line-height: 1.5;
   }
-
-  /* ── Loading spinner ───────────────────────────────────── */
-  #loading {
-    display: none;
-    color: #aaa;
-    font-size: 13px;
-    padding: 12px;
-  }
-  #loading.visible { display: block; }
 </style>
 </head>
 <body>
 
 <div id="editor-pane">
-  <textarea id="input" spellcheck="false" placeholder="Paste or type your Mermaid diagram here…"></textarea>
+  <textarea id="input" spellcheck="false"
+    placeholder="Paste or type your Mermaid diagram here…"></textarea>
   <div id="toolbar">
     <span id="status">Ready</span>
-    <button id="copy-btn" onclick="copyAndClose()">Copy &amp; Close</button>
+    <button onclick="copyAndClose()">Copy &amp; Close</button>
   </div>
 </div>
 
+<div id="divider"></div>
+
 <div id="preview-pane">
   <div id="preview-inner">
-    <div id="loading">Rendering…</div>
     <div id="output"></div>
     <div id="error-msg"></div>
   </div>
 </div>
 
 <script type="module">
-import mermaid from 'https://esm.sh/mermaid';
+  import mermaid from 'https://esm.sh/mermaid';
+  mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
 
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'default',
-  securityLevel: 'loose',
-});
+  const input    = document.getElementById('input');
+  const output   = document.getElementById('output');
+  const errorMsg = document.getElementById('error-msg');
+  const status   = document.getElementById('status');
+  let debounceTimer = null, renderSeq = 0;
 
-const input    = document.getElementById('input');
-const output   = document.getElementById('output');
-const errorMsg = document.getElementById('error-msg');
-const status   = document.getElementById('status');
-const loading  = document.getElementById('loading');
-
-let debounceTimer = null;
-let renderSeq = 0;
-
-async function render() {
-  const text = input.value.trim();
-  if (!text) {
-    output.innerHTML = '';
-    errorMsg.textContent = '';
-    setStatus('Ready', '');
-    return;
+  function setStatus(text, cls) {
+    status.textContent = text;
+    status.className = cls ?? '';
   }
 
-  const seq = ++renderSeq;
-  loading.classList.add('visible');
-  setStatus('Rendering…', '');
-
-  try {
-    const { svg } = await mermaid.render('mmd-' + seq, text);
-    if (seq !== renderSeq) return;
-    output.innerHTML = svg;
-    errorMsg.textContent = '';
-    setStatus('OK', 'ok');
-  } catch (e) {
-    if (seq !== renderSeq) return;
-    output.innerHTML = '';
-    errorMsg.textContent = e.message ?? String(e);
-    setStatus('Error', 'error');
-  } finally {
-    if (seq === renderSeq) loading.classList.remove('visible');
+  async function render() {
+    const text = input.value.trim();
+    if (!text) {
+      output.innerHTML = ''; errorMsg.textContent = ''; setStatus('Ready'); return;
+    }
+    const seq = ++renderSeq;
+    setStatus('Rendering…');
+    try {
+      const { svg } = await mermaid.render('mmd-' + seq, text);
+      if (seq !== renderSeq) return;
+      output.innerHTML = svg; errorMsg.textContent = '';
+      setStatus('OK', 'ok');
+    } catch (e) {
+      if (seq !== renderSeq) return;
+      output.innerHTML = '';
+      errorMsg.textContent = e.message ?? String(e);
+      setStatus('Error', 'error');
+    }
   }
-}
 
-function setStatus(text, cls) {
-  status.textContent = text;
-  status.className = cls;
-}
-
-input.addEventListener('input', () => {
-  clearTimeout(debounceTimer);
-  debounceTimer = setTimeout(render, 350);
-});
-
-// Called by Swift to send clipboard content back and close the window
-window.copyAndClose = function() {
-  window.webkit.messageHandlers.editorAction.postMessage({
-    action: 'copy',
-    text: input.value,
+  input.addEventListener('input', () => {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(render, 350);
   });
-};
 
-// Called by Swift injection at document-start to seed the textarea
-window.setContent = function(text) {
-  input.value = text;
-  render();
-};
+  window.setContent = function(text) { input.value = text; render(); };
 
-// Pick up content injected via WKUserScript before this module loaded
-if (typeof window.__initialContent__ === 'string') {
-  window.setContent(window.__initialContent__);
-}
+  window.copyAndClose = function() {
+    window.webkit.messageHandlers.editorAction.postMessage(
+      { action: 'copy', text: input.value }
+    );
+  };
+
+  if (typeof window.__initialContent__ === 'string') setContent(window.__initialContent__);
 </script>
 </body>
 </html>
 """#
-
-// ─────────────────────────────────────────────────────────────────────────────
 
 class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     var window: NSWindow!
@@ -211,26 +192,17 @@ class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         super.init()
     }
 
-    // MARK: WKScriptMessageHandler
-
-    func userContentController(
-        _ userContentController: WKUserContentController,
-        didReceive message: WKScriptMessage
-    ) {
+    func userContentController(_ userContentController: WKUserContentController,
+                                didReceive message: WKScriptMessage) {
         guard message.name == "editorAction",
               let body = message.body as? [String: Any],
-              let action = body["action"] as? String
-        else { return }
-
+              let action = body["action"] as? String else { return }
         if action == "copy", let text = body["text"] as? String {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
         }
-        cleanup()
-        NSApp.terminate(nil)
+        cleanup(); NSApp.terminate(nil)
     }
-
-    // MARK: Lifecycle
 
     private func cleanup() {
         try? FileManager.default.removeItem(atPath: sourcePath)
@@ -240,52 +212,59 @@ class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         let app = NSApplication.shared
         app.setActivationPolicy(.regular)
 
-        // Inject initial content as a global variable before any script runs,
-        // so the ESM module can read it once mermaid.js has finished loading.
-        let jsonData = (try? JSONSerialization.data(withJSONObject: initialContent, options: .fragmentsAllowed)) ?? Data("\"\"".utf8)
-        let jsonStr  = String(data: jsonData, encoding: .utf8) ?? "\"\""
-        let injection = WKUserScript(
-            source: "window.__initialContent__ = \(jsonStr);",
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: true
-        )
-
+        let jsonData = (try? JSONSerialization.data(withJSONObject: initialContent,
+                                                    options: .fragmentsAllowed)) ?? Data("\"\"".utf8)
+        let jsonStr = String(data: jsonData, encoding: .utf8) ?? "\"\""
+        let injection = WKUserScript(source: "window.__initialContent__ = \(jsonStr);",
+                                     injectionTime: .atDocumentStart,
+                                     forMainFrameOnly: true)
         let config = WKWebViewConfiguration()
         config.userContentController.addUserScript(injection)
         config.userContentController.add(self, name: "editorAction")
 
-        let rect = NSRect(x: 0, y: 0, width: 980, height: 640)
-        window = NSWindow(
-            contentRect: rect,
-            styleMask: [.titled, .closable, .resizable, .miniaturizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Mermaid Editor"
-        window.center()
+        let size = NSSize(width: 960, height: 620)
+        let rect = NSRect(origin: .zero, size: size)
+
+        window = NSWindow(contentRect: rect,
+                          styleMask: [.borderless, .resizable],
+                          backing: .buffered,
+                          defer: false)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        window.isMovableByWindowBackground = true
         window.contentMinSize = NSSize(width: 500, height: 360)
+        window.center()
 
-        // Clean up temp file if the window is closed without using Copy & Close
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification,
-            object: window,
-            queue: .main
-        ) { [weak self] _ in
-            self?.cleanup()
-            NSApp.terminate(nil)
-        }
+        // Glass background layer
+        let vfx = NSVisualEffectView(frame: rect)
+        vfx.autoresizingMask = [.width, .height]
+        vfx.material = .hudWindow
+        vfx.blendingMode = .behindWindow
+        vfx.state = .active
+        vfx.wantsLayer = true
+        vfx.layer?.cornerRadius = 20
+        vfx.layer?.masksToBounds = true
 
+        // Transparent WebView on top of glass
         webView = WKWebView(frame: rect, configuration: config)
         webView.navigationDelegate = self
         webView.autoresizingMask = [.width, .height]
-        window.contentView = webView
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.setValue(false, forKey: "drawsBackground")
 
-        // Use the temp directory as base URL so WebKit allows loading
-        // external HTTPS resources (esm.sh) from the inline HTML.
+        vfx.addSubview(webView)
+        window.contentView = vfx
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self] _ in self?.cleanup(); NSApp.terminate(nil) }
+
         let baseURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
-        webView.loadHTMLString(htmlContent, baseURL: baseURL)
+        webView.loadHTMLString(html, baseURL: baseURL)
 
         window.makeKeyAndOrderFront(nil)
         app.activate(ignoringOtherApps: true)
@@ -293,11 +272,7 @@ class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-
 guard CommandLine.arguments.count > 1 else {
-    fputs("Usage: mermaid_editor <source.mmd>\n", stderr)
-    exit(1)
+    fputs("Usage: mermaid_editor <source.mmd>\n", stderr); exit(1)
 }
-
 MermaidEditor(sourcePath: CommandLine.arguments[1]).run()

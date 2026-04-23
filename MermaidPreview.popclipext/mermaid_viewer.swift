@@ -10,66 +10,69 @@ private let html = #"""
 <meta charset="utf-8">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; background: #fff; }
+  html, body {
+    height: 100%;
+    background: transparent;
+  }
   body {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     min-height: 100%;
-    padding: 28px;
+    padding: 32px;
+    gap: 16px;
   }
-  #output svg { max-width: 100%; height: auto; display: block; }
+  #output svg {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    filter: drop-shadow(0 2px 12px rgba(0,0,0,0.4));
+  }
   #error {
-    color: #c0392b;
+    color: rgba(255, 110, 110, 0.95);
     font-family: 'SF Mono', Menlo, monospace;
     font-size: 12px;
     white-space: pre-wrap;
-    line-height: 1.5;
+    line-height: 1.6;
+    background: rgba(0,0,0,0.25);
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,0.08);
+    max-width: 100%;
   }
-  #close-btn {
-    position: fixed;
-    top: 10px; right: 12px;
-    background: rgba(0,0,0,0.1);
-    border: none;
-    border-radius: 50%;
-    width: 26px; height: 26px;
-    font-size: 14px;
-    cursor: pointer;
-    color: #555;
-    display: flex; align-items: center; justify-content: center;
+  #hint {
+    font-size: 11px;
+    color: rgba(255,255,255,0.25);
+    letter-spacing: 0.02em;
+    user-select: none;
   }
-  #close-btn:hover { background: rgba(0,0,0,0.2); }
 </style>
 </head>
 <body>
-<button id="close-btn" title="Close (Esc)"
-  onclick="window.webkit.messageHandlers.action.postMessage('close')">✕</button>
-<div>
-  <div id="output"></div>
-  <div id="error"></div>
-</div>
+<div id="output"></div>
+<div id="error"></div>
+<p id="hint">Click outside or press Esc to close</p>
 <script type="module">
   import mermaid from 'https://esm.sh/mermaid';
-  mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+  mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
 
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' || e.key === ' ') {
+    if (e.key === 'Escape' || e.key === ' ')
       window.webkit.messageHandlers.action.postMessage('close');
-    }
   });
 
   window.renderContent = async function(text) {
     try {
       const { svg } = await mermaid.render('mmd-view', text.trim());
       document.getElementById('output').innerHTML = svg;
+      document.getElementById('error').textContent = '';
     } catch (e) {
       document.getElementById('error').textContent = e.message ?? String(e);
     }
   };
 
-  if (typeof window.__content__ === 'string') {
-    renderContent(window.__content__);
-  }
+  if (typeof window.__content__ === 'string') renderContent(window.__content__);
 </script>
 </body>
 </html>
@@ -80,6 +83,7 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
     var webView: WKWebView!
     let content: String
     let sourcePath: String
+    var globalMonitor: Any?
 
     init(sourcePath: String) {
         self.sourcePath = sourcePath
@@ -87,14 +91,15 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
         super.init()
     }
 
-    func userContentController(
-        _ userContentController: WKUserContentController,
-        didReceive message: WKScriptMessage
-    ) {
-        if message.name == "action" {
-            cleanup()
-            NSApp.terminate(nil)
-        }
+    func userContentController(_ userContentController: WKUserContentController,
+                                didReceive message: WKScriptMessage) {
+        close()
+    }
+
+    private func close() {
+        if let m = globalMonitor { NSEvent.removeMonitor(m); globalMonitor = nil }
+        cleanup()
+        NSApp.terminate(nil)
     }
 
     private func cleanup() {
@@ -105,45 +110,65 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
 
-        let jsonData = (try? JSONSerialization.data(withJSONObject: content, options: .fragmentsAllowed)) ?? Data("\"\"".utf8)
+        let jsonData = (try? JSONSerialization.data(withJSONObject: content,
+                                                    options: .fragmentsAllowed)) ?? Data("\"\"".utf8)
         let jsonStr = String(data: jsonData, encoding: .utf8) ?? "\"\""
-        let injection = WKUserScript(
-            source: "window.__content__ = \(jsonStr);",
-            injectionTime: .atDocumentStart,
-            forMainFrameOnly: true
-        )
-
+        let injection = WKUserScript(source: "window.__content__ = \(jsonStr);",
+                                     injectionTime: .atDocumentStart,
+                                     forMainFrameOnly: true)
         let config = WKWebViewConfiguration()
         config.userContentController.addUserScript(injection)
         config.userContentController.add(self, name: "action")
 
-        let rect = NSRect(x: 0, y: 0, width: 720, height: 540)
-        window = NSWindow(
-            contentRect: rect,
-            styleMask: [.titled, .closable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Mermaid Preview"
-        window.center()
+        let size = NSSize(width: 680, height: 520)
+        let rect = NSRect(origin: .zero, size: size)
+
+        window = NSWindow(contentRect: rect,
+                          styleMask: [.borderless],
+                          backing: .buffered,
+                          defer: false)
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.hasShadow = true
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        window.isMovableByWindowBackground = true
+        window.center()
 
-        NotificationCenter.default.addObserver(
-            forName: NSWindow.willCloseNotification,
-            object: window,
-            queue: .main
-        ) { [weak self] _ in
-            self?.cleanup()
-            NSApp.terminate(nil)
-        }
+        // Glass background layer
+        let vfx = NSVisualEffectView(frame: rect)
+        vfx.autoresizingMask = [.width, .height]
+        vfx.material = .hudWindow
+        vfx.blendingMode = .behindWindow
+        vfx.state = .active
+        vfx.wantsLayer = true
+        vfx.layer?.cornerRadius = 20
+        vfx.layer?.masksToBounds = true
 
+        // Transparent WebView renders on top of glass
         webView = WKWebView(frame: rect, configuration: config)
         webView.autoresizingMask = [.width, .height]
-        window.contentView = webView
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.setValue(false, forKey: "drawsBackground")
+
+        vfx.addSubview(webView)
+        window.contentView = vfx
 
         let baseURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         webView.loadHTMLString(html, baseURL: baseURL)
+
+        // Click outside → close
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]
+        ) { [weak self] _ in
+            guard let self else { return }
+            if !self.window.frame.contains(NSEvent.mouseLocation) { self.close() }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: NSWindow.willCloseNotification, object: window, queue: .main
+        ) { [weak self] _ in self?.close() }
 
         window.makeKeyAndOrderFront(nil)
         app.activate(ignoringOtherApps: true)
@@ -152,8 +177,6 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
 }
 
 guard CommandLine.arguments.count > 1 else {
-    fputs("Usage: mermaid_viewer <source.mmd>\n", stderr)
-    exit(1)
+    fputs("Usage: mermaid_viewer <source.mmd>\n", stderr); exit(1)
 }
-
 MermaidViewer(sourcePath: CommandLine.arguments[1]).run()
