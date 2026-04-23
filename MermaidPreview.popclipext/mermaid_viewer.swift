@@ -14,32 +14,33 @@ private let html = #"""
     height: 100%;
     background: transparent;
     font-family: -apple-system, system-ui, sans-serif;
-    /* entire window is draggable; no-drag set on interactive regions below */
-    -webkit-app-region: drag;
   }
   body {
     display: flex;
     flex-direction: column;
+  }
+  /* Narrow drag strip mirrors the hidden native title bar */
+  #titlebar {
+    height: 28px;
+    flex-shrink: 0;
+    -webkit-app-region: drag;
+    cursor: grab;
+  }
+  #content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 100%;
-    padding: 32px;
+    padding: 8px 32px 24px;
     gap: 16px;
   }
-  #output {
-    -webkit-app-region: no-drag;
-  }
   #output:empty { display: none; }
-  #output svg {
-    max-width: 100%;
-    height: auto;
-    display: block;
-  }
+  #output svg { max-width: 100%; height: auto; display: block; }
   #error {
-    -webkit-app-region: no-drag;
     color: rgba(200, 60, 60, 0.95);
-    font-family: 'SF Mono', Menlo, monospace;
     font-size: 12px;
+    font-family: 'SF Mono', Menlo, monospace;
     white-space: pre-wrap;
     line-height: 1.6;
     background: rgba(255,255,255,0.88);
@@ -59,9 +60,12 @@ private let html = #"""
 </style>
 </head>
 <body>
-<div id="output"></div>
-<div id="error"></div>
-<p id="hint">Click outside or press Esc to close</p>
+<div id="titlebar"></div>
+<div id="content">
+  <div id="output"></div>
+  <div id="error"></div>
+  <p id="hint">Click outside or press Esc to close</p>
+</div>
 <script type="module">
   import mermaid from 'https://esm.sh/mermaid';
   mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
@@ -76,7 +80,6 @@ private let html = #"""
       const { svg } = await mermaid.render('mmd-view', text.trim());
       document.getElementById('output').innerHTML = svg;
       document.getElementById('error').textContent = '';
-
       requestAnimationFrame(() => {
         const svgEl = document.querySelector('#output svg');
         if (!svgEl) return;
@@ -97,7 +100,6 @@ private let html = #"""
 class MermaidViewer: NSObject, WKScriptMessageHandler {
     var window: NSWindow!
     var webView: WKWebView!
-    var vfx: NSVisualEffectView!
     let content: String
     let sourcePath: String
     var globalMonitor: Any?
@@ -111,8 +113,7 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
     func userContentController(_ userContentController: WKUserContentController,
                                 didReceive message: WKScriptMessage) {
         switch message.name {
-        case "action":
-            close()
+        case "action": close()
         case "resize":
             guard let body = message.body as? [String: Any],
                   let w = body["width"] as? CGFloat,
@@ -123,16 +124,15 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
     }
 
     private func resizeToFit(svgWidth: CGFloat, svgHeight: CGFloat) {
-        let htmlPad: CGFloat = 64   // 32px each side in HTML
-        let hintRow: CGFloat = 44   // hint text + gap
-        let screen = NSScreen.main?.visibleFrame ?? NSRect(x:0,y:0,width:1440,height:900)
+        let htmlPad: CGFloat = 64
+        let chrome: CGFloat  = 28 + 16 + 24  // titlebar + hint + gap
+        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let newW = min(max(svgWidth  + htmlPad, 360), screen.width  * 0.85)
-        let newH = min(max(svgHeight + htmlPad + hintRow, 260), screen.height * 0.85)
+        let newH = min(max(svgHeight + htmlPad + chrome, 260), screen.height * 0.85)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.window.setContentSize(NSSize(width: newW, height: newH))
             self.window.center()
-            self.window.invalidateShadow()
         }
     }
 
@@ -149,7 +149,7 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
 
         let jsonData = (try? JSONSerialization.data(withJSONObject: content,
                                                     options: .fragmentsAllowed)) ?? Data("\"\"".utf8)
-        let jsonStr  = String(data: jsonData, encoding: .utf8) ?? "\"\""
+        let jsonStr = String(data: jsonData, encoding: .utf8) ?? "\"\""
         let injection = WKUserScript(source: "window.__content__ = \(jsonStr);",
                                      injectionTime: .atDocumentStart,
                                      forMainFrameOnly: true)
@@ -160,9 +160,14 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
 
         let rect = NSRect(x: 0, y: 0, width: 680, height: 480)
 
+        // .titled gives macOS native rounded corners and proper shadow.
+        // .fullSizeContentView lets the VFX view fill the entire frame
+        // including where the title bar would be.
         window = NSWindow(contentRect: rect,
-                          styleMask: [.borderless],
+                          styleMask: [.titled, .fullSizeContentView],
                           backing: .buffered, defer: false)
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = true
@@ -170,18 +175,17 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         window.isMovableByWindowBackground = true
         window.center()
+        // No traffic lights needed — no .closable / .miniaturizable in style mask
+        window.standardWindowButton(.closeButton)?.isHidden = true
+        window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+        window.standardWindowButton(.zoomButton)?.isHidden = true
 
-        // Glass layer — this is the single clipping boundary
-        vfx = NSVisualEffectView(frame: rect)
+        let vfx = NSVisualEffectView(frame: rect)
         vfx.autoresizingMask = [.width, .height]
         vfx.material = .hudWindow
         vfx.blendingMode = .behindWindow
         vfx.state = .active
-        vfx.wantsLayer = true
-        vfx.layer?.cornerRadius = 20
-        vfx.layer?.masksToBounds = true
 
-        // WebView: transparent, clipped by the VFX view above — no extra cornerRadius
         webView = WKWebView(frame: rect, configuration: config)
         webView.autoresizingMask = [.width, .height]
         webView.setValue(false, forKey: "drawsBackground")
@@ -205,8 +209,6 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
 
         window.makeKeyAndOrderFront(nil)
         app.activate(ignoringOtherApps: true)
-        // Recompute shadow from actual rendered (rounded) pixels
-        DispatchQueue.main.async { self.window.invalidateShadow() }
         app.run()
     }
 }
