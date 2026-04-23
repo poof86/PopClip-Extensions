@@ -1,17 +1,9 @@
 name: Mermaid Preview
 identifier: com.popclip.extension.mermaid-preview
-description: Render selected Mermaid diagram syntax client-side via mermaid.js. Quick View shows a floating preview; Quick Editor adds a live-editable source pane with Copy & Close.
+description: Render selected Mermaid diagram syntax client-side via mermaid.js. Shows a floating preview with an Edit button that opens a live split-pane editor with Copy & Close.
 icon: square filled M
 requirements: [text]
 regex: '(?s).*(```mermaid|graph\s|flowchart\s|sequenceDiagram[\s\n]|classDiagram[\s\n]|stateDiagram|erDiagram|gantt[\s\n]|pie[\s\n]|gitGraph|mindmap[\s\n]|timeline[\s\n]|xychart-beta[\s\n]|quadrantChart[\s\n]).*'
-options:
-  - identifier: previewmode
-    label: Preview Mode
-    type: multiple
-    values: [quickview, quickeditor]
-    valueLabels: ["Quick View", "Quick Editor"]
-    defaultValue: quickview
-    description: "Quick View: floating read-only preview. Quick Editor: split-pane editor with live preview and Copy & Close."
 actions:
   - title: Mermaid Preview
     icon: square filled M
