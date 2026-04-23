@@ -21,29 +21,27 @@ private let html = #"""
     justify-content: center;
     min-height: 100%;
     padding: 32px;
-    gap: 16px;
+    gap: 14px;
   }
   #output svg {
     max-width: 100%;
     height: auto;
     display: block;
-    filter: drop-shadow(0 2px 12px rgba(0,0,0,0.4));
   }
   #error {
-    color: rgba(255, 110, 110, 0.95);
+    color: rgba(200, 60, 60, 0.95);
     font-family: 'SF Mono', Menlo, monospace;
     font-size: 12px;
     white-space: pre-wrap;
     line-height: 1.6;
-    background: rgba(0,0,0,0.25);
+    background: rgba(255,255,255,0.85);
     padding: 14px 16px;
     border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.08);
     max-width: 100%;
   }
   #hint {
     font-size: 11px;
-    color: rgba(255,255,255,0.25);
+    color: rgba(255,255,255,0.3);
     letter-spacing: 0.02em;
     user-select: none;
   }
@@ -55,7 +53,7 @@ private let html = #"""
 <p id="hint">Click outside or press Esc to close</p>
 <script type="module">
   import mermaid from 'https://esm.sh/mermaid';
-  mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+  mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
 
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' || e.key === ' ')
@@ -67,6 +65,14 @@ private let html = #"""
       const { svg } = await mermaid.render('mmd-view', text.trim());
       document.getElementById('output').innerHTML = svg;
       document.getElementById('error').textContent = '';
+
+      // Measure rendered SVG and ask Swift to resize the window
+      requestAnimationFrame(() => {
+        const svgEl = document.querySelector('#output svg');
+        if (!svgEl) return;
+        const { width, height } = svgEl.getBoundingClientRect();
+        window.webkit.messageHandlers.resize.postMessage({ width, height });
+      });
     } catch (e) {
       document.getElementById('error').textContent = e.message ?? String(e);
     }
@@ -93,7 +99,34 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ userContentController: WKUserContentController,
                                 didReceive message: WKScriptMessage) {
-        close()
+        switch message.name {
+        case "action":
+            close()
+        case "resize":
+            guard let body = message.body as? [String: Any],
+                  let svgW = body["width"] as? CGFloat,
+                  let svgH = body["height"] as? CGFloat else { return }
+            resizeWindow(svgWidth: svgW, svgHeight: svgH)
+        default:
+            break
+        }
+    }
+
+    private func resizeWindow(svgWidth: CGFloat, svgHeight: CGFloat) {
+        let padding: CGFloat = 64  // 32px each side
+        let hintBar: CGFloat = 40  // hint text + gap
+        let newW = min(max(svgWidth  + padding, 360), screenMax().width)
+        let newH = min(max(svgHeight + padding + hintBar, 240), screenMax().height)
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.window.setContentSize(NSSize(width: newW, height: newH))
+            self.window.center()
+        }
+    }
+
+    private func screenMax() -> CGSize {
+        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        return CGSize(width: screen.width * 0.85, height: screen.height * 0.85)
     }
 
     private func close() {
@@ -119,12 +152,13 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
         let config = WKWebViewConfiguration()
         config.userContentController.addUserScript(injection)
         config.userContentController.add(self, name: "action")
+        config.userContentController.add(self, name: "resize")
 
-        let size = NSSize(width: 680, height: 520)
-        let rect = NSRect(origin: .zero, size: size)
+        // Start with a reasonable placeholder size; JS will resize after render
+        let rect = NSRect(x: 0, y: 0, width: 680, height: 480)
 
         window = NSWindow(contentRect: rect,
-                          styleMask: [.borderless],
+                          styleMask: [.borderless, .resizable],
                           backing: .buffered,
                           defer: false)
         window.isOpaque = false
@@ -145,10 +179,13 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
         vfx.layer?.cornerRadius = 20
         vfx.layer?.masksToBounds = true
 
-        // Transparent WebView renders on top of glass
+        // WebView clipped to the same rounded shape
         webView = WKWebView(frame: rect, configuration: config)
         webView.autoresizingMask = [.width, .height]
         webView.setValue(false, forKey: "drawsBackground")
+        webView.wantsLayer = true
+        webView.layer?.cornerRadius = 20
+        webView.layer?.masksToBounds = true
 
         vfx.addSubview(webView)
         window.contentView = vfx

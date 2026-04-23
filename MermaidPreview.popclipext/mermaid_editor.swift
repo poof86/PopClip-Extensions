@@ -128,7 +128,7 @@ private let html = #"""
 
 <script type="module">
   import mermaid from 'https://esm.sh/mermaid';
-  mermaid.initialize({ startOnLoad: false, theme: 'dark', securityLevel: 'loose' });
+  mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
 
   const input    = document.getElementById('input');
   const output   = document.getElementById('output');
@@ -253,6 +253,9 @@ class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         webView.navigationDelegate = self
         webView.autoresizingMask = [.width, .height]
         webView.setValue(false, forKey: "drawsBackground")
+        webView.wantsLayer = true
+        webView.layer?.cornerRadius = 20
+        webView.layer?.masksToBounds = true
 
         vfx.addSubview(webView)
         window.contentView = vfx
