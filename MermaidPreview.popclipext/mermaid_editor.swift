@@ -242,7 +242,7 @@ class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
 
         // Inject initial content as a global variable before any script runs,
         // so the ESM module can read it once mermaid.js has finished loading.
-        let jsonData = (try? JSONSerialization.data(withJSONObject: initialContent)) ?? Data("\"\"".utf8)
+        let jsonData = (try? JSONSerialization.data(withJSONObject: initialContent, options: .fragmentsAllowed)) ?? Data("\"\"".utf8)
         let jsonStr  = String(data: jsonData, encoding: .utf8) ?? "\"\""
         let injection = WKUserScript(
             source: "window.__initialContent__ = \(jsonStr);",
