@@ -21,9 +21,11 @@ if [[ "$POPCLIP_OPTION_PREVIEWMODE" == "quickeditor" ]]; then
   /usr/bin/swift "$SCRIPT_DIR/mermaid_editor.swift" "$TEMP_SOURCE" >> "$LOGFILE" 2>&1 &
 else
   TEMP_FILE="${TMPDIR:-/tmp/}mermaid_$(/usr/bin/uuidgen).svg"
+  RENDERED=0
   if command -v mmdc &>/dev/null; then
-    echo "$INPUT" | mmdc -i - -o "$TEMP_FILE" -e svg || exit 1
-  else
+    echo "$INPUT" | mmdc -i - -o "$TEMP_FILE" -e svg && RENDERED=1
+  fi
+  if [[ $RENDERED -eq 0 ]]; then
     BASE64_STRING=$(echo -n "$INPUT" | /usr/bin/base64 -b 0 | tr '+/' '-_' | tr -d '=')
     /usr/bin/curl -sf "https://mermaid.ink/svg/${BASE64_STRING}" -o "$TEMP_FILE" || exit 1
   fi
