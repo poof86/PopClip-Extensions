@@ -3,12 +3,6 @@
 import Cocoa
 import WebKit
 
-// Sits above WKWebView at the top of the window; AppKit drags the window
-// on mouseDown because mouseDownCanMoveWindow returns true.
-class TitleDragView: NSView {
-    override var mouseDownCanMoveWindow: Bool { true }
-}
-
 private let html = #"""
 <!DOCTYPE html>
 <html lang="en">
@@ -348,6 +342,37 @@ class MermaidPreview: NSObject, WKScriptMessageHandler {
     }
 
     private func cleanup() { try? FileManager.default.removeItem(atPath: sourcePath) }
+    
+    @objc func handleWindowDrag(_ gesture: NSPanGestureRecognizer) {
+        // 1. We must use the contentView as the reference point for the location.
+        // This is the only way to get the click position from the gesture.
+        guard let contentView = window.contentView else { return }
+        let locationInView = gesture.location(in: contentView)
+        
+        // 2. THE GATEKEEPER:
+        // We check if the click hit the webView.
+        // We check the webView's frame in the contentView's coordinate space.
+        if let webView = contentView.subviews.first(where: { $0 is WKWebView }),
+           webView.frame.contains(locationInView) {
+            
+            // If the click is inside the webView, we do nothing.
+            // This allows the webView to handle its own buttons/text.
+            // We reset the translation so it doesn't "drift"
+            gesture.setTranslation(.zero, in: contentView)
+            return
+        }
+
+        // 3. THE DRAG:
+        // If we are here, the click was on the background/vfx/drag-strip.
+        // We use the native macOS drag method.
+        // We use the current event from the application.
+        if let event = NSApp.currentEvent {
+            window.performDrag(with: event)
+        }
+        
+        // 4. Safety Reset
+        gesture.setTranslation(.zero, in: contentView)
+    }
 
     func run() {
         let app = NSApplication.shared
@@ -394,11 +419,11 @@ class MermaidPreview: NSObject, WKScriptMessageHandler {
 
         // Native drag strip: intercepts mouseDown in the top 28 px so
         // AppKit can move the window; events below it reach the webview.
-        let dragH    = CGFloat(28)
-        let dragView = TitleDragView(frame: NSRect(x: 0, y: rect.height - dragH,
-                                                   width: rect.width, height: dragH))
-        dragView.autoresizingMask = [.width, .minYMargin]
-        vfx.addSubview(dragView)
+        //let dragH    = CGFloat(28)
+        //let dragView = TitleDragView(frame: NSRect(x: 0, y: rect.height - dragH,
+        //                                           width: rect.width, height: dragH))
+        //dragView.autoresizingMask = [.width, .minYMargin]
+        //vfx.addSubview(dragView)
 
         window.contentView = vfx
 
@@ -415,6 +440,9 @@ class MermaidPreview: NSObject, WKScriptMessageHandler {
         NotificationCenter.default.addObserver(
             forName: NSWindow.willCloseNotification, object: window, queue: .main
         ) { [weak self] _ in self?.close() }
+        
+        let windowDragGesture = NSPanGestureRecognizer(target: self, action: #selector(handleWindowDrag(_:)))
+        window.contentView?.addGestureRecognizer(windowDragGesture)
 
         window.makeKeyAndOrderFront(nil)
         app.activate(ignoringOtherApps: true)
