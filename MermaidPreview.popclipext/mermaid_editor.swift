@@ -265,7 +265,7 @@ class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         window.center()
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        window.setContentMinSize(NSSize(width: 500, height: 360))
+        window.contentMinSize = NSSize(width: 500, height: 360)
 
         // Clean up temp file if the window is closed without using Copy & Close
         NotificationCenter.default.addObserver(
