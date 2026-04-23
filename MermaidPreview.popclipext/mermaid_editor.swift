@@ -10,12 +10,16 @@ private let html = #"""
 <meta charset="utf-8">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; background: transparent; }
+  html, body {
+    height: 100%;
+    background: transparent;
+    font-family: -apple-system, system-ui, sans-serif;
+    color: rgba(255,255,255,0.9);
+  }
   body {
     display: flex;
     height: 100vh;
-    font-family: -apple-system, system-ui, sans-serif;
-    color: rgba(255,255,255,0.9);
+    -webkit-app-region: drag;
   }
 
   /* ── Editor pane ── */
@@ -39,6 +43,7 @@ private let html = #"""
     resize: none;
     outline: none;
     tab-size: 2;
+    -webkit-app-region: no-drag;
   }
   textarea:focus {
     border-color: rgba(255, 255, 255, 0.22);
@@ -50,14 +55,20 @@ private let html = #"""
     justify-content: space-between;
     padding: 0 2px;
     flex-shrink: 0;
+    -webkit-app-region: no-drag;
   }
+  /* Error pill — hidden unless there's an error */
   #status {
     font-size: 11px;
-    color: rgba(255,255,255,0.35);
-    letter-spacing: 0.02em;
+    font-weight: 500;
+    color: rgba(255, 90, 90, 0.95);
+    background: rgba(255, 60, 60, 0.18);
+    border: 1px solid rgba(255, 90, 90, 0.3);
+    border-radius: 20px;
+    padding: 3px 11px;
+    display: none;
   }
-  #status.ok    { color: rgba(100,220,130,0.8); }
-  #status.error { color: rgba(255,110,110,0.8); }
+  #status.error { display: inline-block; }
   button {
     padding: 7px 20px;
     background: rgba(255, 255, 255, 0.15);
@@ -69,6 +80,7 @@ private let html = #"""
     font-weight: 500;
     transition: background 0.15s;
     white-space: nowrap;
+    -webkit-app-region: no-drag;
   }
   button:hover { background: rgba(255, 255, 255, 0.26); }
   button:active { transform: scale(0.97); }
@@ -89,21 +101,19 @@ private let html = #"""
     display: flex;
     align-items: flex-start;
     justify-content: center;
+    -webkit-app-region: no-drag;
   }
   #preview-inner { max-width: 100%; }
-  #output svg {
-    max-width: 100%;
-    height: auto;
-    display: block;
-    filter: drop-shadow(0 2px 10px rgba(0,0,0,0.35));
-  }
+  #output svg { max-width: 100%; height: auto; display: block; }
+  #output:empty { display: none; }
   #error-msg {
-    color: rgba(255, 110, 110, 0.9);
+    color: rgba(200, 60, 60, 0.9);
     font-family: 'SF Mono', Menlo, monospace;
     font-size: 12px;
     white-space: pre-wrap;
     line-height: 1.5;
   }
+  #error-msg:empty { display: none; }
 </style>
 </head>
 <body>
@@ -112,7 +122,7 @@ private let html = #"""
   <textarea id="input" spellcheck="false"
     placeholder="Paste or type your Mermaid diagram here…"></textarea>
   <div id="toolbar">
-    <span id="status">Ready</span>
+    <span id="status"></span>
     <button onclick="copyAndClose()">Copy &amp; Close</button>
   </div>
 </div>
@@ -136,28 +146,25 @@ private let html = #"""
   const status   = document.getElementById('status');
   let debounceTimer = null, renderSeq = 0;
 
-  function setStatus(text, cls) {
-    status.textContent = text;
-    status.className = cls ?? '';
-  }
-
   async function render() {
     const text = input.value.trim();
     if (!text) {
-      output.innerHTML = ''; errorMsg.textContent = ''; setStatus('Ready'); return;
+      output.innerHTML = ''; errorMsg.textContent = '';
+      status.textContent = ''; status.className = '';
+      return;
     }
     const seq = ++renderSeq;
-    setStatus('Rendering…');
     try {
       const { svg } = await mermaid.render('mmd-' + seq, text);
       if (seq !== renderSeq) return;
       output.innerHTML = svg; errorMsg.textContent = '';
-      setStatus('OK', 'ok');
+      status.textContent = ''; status.className = '';
     } catch (e) {
       if (seq !== renderSeq) return;
       output.innerHTML = '';
       errorMsg.textContent = e.message ?? String(e);
-      setStatus('Error', 'error');
+      status.textContent = 'Syntax error';
+      status.className = 'error';
     }
   }
 
@@ -204,9 +211,7 @@ class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         cleanup(); NSApp.terminate(nil)
     }
 
-    private func cleanup() {
-        try? FileManager.default.removeItem(atPath: sourcePath)
-    }
+    private func cleanup() { try? FileManager.default.removeItem(atPath: sourcePath) }
 
     func run() {
         let app = NSApplication.shared
@@ -214,7 +219,7 @@ class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
 
         let jsonData = (try? JSONSerialization.data(withJSONObject: initialContent,
                                                     options: .fragmentsAllowed)) ?? Data("\"\"".utf8)
-        let jsonStr = String(data: jsonData, encoding: .utf8) ?? "\"\""
+        let jsonStr  = String(data: jsonData, encoding: .utf8) ?? "\"\""
         let injection = WKUserScript(source: "window.__initialContent__ = \(jsonStr);",
                                      injectionTime: .atDocumentStart,
                                      forMainFrameOnly: true)
@@ -222,13 +227,10 @@ class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         config.userContentController.addUserScript(injection)
         config.userContentController.add(self, name: "editorAction")
 
-        let size = NSSize(width: 960, height: 620)
-        let rect = NSRect(origin: .zero, size: size)
-
+        let rect = NSRect(x: 0, y: 0, width: 960, height: 620)
         window = NSWindow(contentRect: rect,
                           styleMask: [.borderless, .resizable],
-                          backing: .buffered,
-                          defer: false)
+                          backing: .buffered, defer: false)
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = true
@@ -238,7 +240,7 @@ class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         window.contentMinSize = NSSize(width: 500, height: 360)
         window.center()
 
-        // Glass background layer
+        // Single clipping boundary
         let vfx = NSVisualEffectView(frame: rect)
         vfx.autoresizingMask = [.width, .height]
         vfx.material = .hudWindow
@@ -248,14 +250,11 @@ class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
         vfx.layer?.cornerRadius = 20
         vfx.layer?.masksToBounds = true
 
-        // Transparent WebView on top of glass
+        // WebView: transparent, clipped by VFX view — no extra cornerRadius
         webView = WKWebView(frame: rect, configuration: config)
         webView.navigationDelegate = self
         webView.autoresizingMask = [.width, .height]
         webView.setValue(false, forKey: "drawsBackground")
-        webView.wantsLayer = true
-        webView.layer?.cornerRadius = 20
-        webView.layer?.masksToBounds = true
 
         vfx.addSubview(webView)
         window.contentView = vfx
@@ -269,6 +268,7 @@ class MermaidEditor: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
 
         window.makeKeyAndOrderFront(nil)
         app.activate(ignoringOtherApps: true)
+        DispatchQueue.main.async { self.window.invalidateShadow() }
         app.run()
     }
 }

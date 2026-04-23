@@ -13,6 +13,9 @@ private let html = #"""
   html, body {
     height: 100%;
     background: transparent;
+    font-family: -apple-system, system-ui, sans-serif;
+    /* entire window is draggable; no-drag set on interactive regions below */
+    -webkit-app-region: drag;
   }
   body {
     display: flex;
@@ -21,29 +24,37 @@ private let html = #"""
     justify-content: center;
     min-height: 100%;
     padding: 32px;
-    gap: 14px;
+    gap: 16px;
   }
+  #output {
+    -webkit-app-region: no-drag;
+  }
+  #output:empty { display: none; }
   #output svg {
     max-width: 100%;
     height: auto;
     display: block;
   }
   #error {
+    -webkit-app-region: no-drag;
     color: rgba(200, 60, 60, 0.95);
     font-family: 'SF Mono', Menlo, monospace;
     font-size: 12px;
     white-space: pre-wrap;
     line-height: 1.6;
-    background: rgba(255,255,255,0.85);
+    background: rgba(255,255,255,0.88);
     padding: 14px 16px;
     border-radius: 10px;
     max-width: 100%;
   }
+  #error:empty { display: none; }
   #hint {
-    font-size: 11px;
-    color: rgba(255,255,255,0.3);
-    letter-spacing: 0.02em;
+    font-size: 12px;
+    font-weight: 400;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 0.01em;
     user-select: none;
+    -webkit-app-region: drag;
   }
 </style>
 </head>
@@ -66,7 +77,6 @@ private let html = #"""
       document.getElementById('output').innerHTML = svg;
       document.getElementById('error').textContent = '';
 
-      // Measure rendered SVG and ask Swift to resize the window
       requestAnimationFrame(() => {
         const svgEl = document.querySelector('#output svg');
         if (!svgEl) return;
@@ -87,6 +97,7 @@ private let html = #"""
 class MermaidViewer: NSObject, WKScriptMessageHandler {
     var window: NSWindow!
     var webView: WKWebView!
+    var vfx: NSVisualEffectView!
     let content: String
     let sourcePath: String
     var globalMonitor: Any?
@@ -104,40 +115,33 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
             close()
         case "resize":
             guard let body = message.body as? [String: Any],
-                  let svgW = body["width"] as? CGFloat,
-                  let svgH = body["height"] as? CGFloat else { return }
-            resizeWindow(svgWidth: svgW, svgHeight: svgH)
-        default:
-            break
+                  let w = body["width"] as? CGFloat,
+                  let h = body["height"] as? CGFloat else { return }
+            resizeToFit(svgWidth: w, svgHeight: h)
+        default: break
         }
     }
 
-    private func resizeWindow(svgWidth: CGFloat, svgHeight: CGFloat) {
-        let padding: CGFloat = 64  // 32px each side
-        let hintBar: CGFloat = 40  // hint text + gap
-        let newW = min(max(svgWidth  + padding, 360), screenMax().width)
-        let newH = min(max(svgHeight + padding + hintBar, 240), screenMax().height)
+    private func resizeToFit(svgWidth: CGFloat, svgHeight: CGFloat) {
+        let htmlPad: CGFloat = 64   // 32px each side in HTML
+        let hintRow: CGFloat = 44   // hint text + gap
+        let screen = NSScreen.main?.visibleFrame ?? NSRect(x:0,y:0,width:1440,height:900)
+        let newW = min(max(svgWidth  + htmlPad, 360), screen.width  * 0.85)
+        let newH = min(max(svgHeight + htmlPad + hintRow, 260), screen.height * 0.85)
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.window.setContentSize(NSSize(width: newW, height: newH))
             self.window.center()
+            self.window.invalidateShadow()
         }
-    }
-
-    private func screenMax() -> CGSize {
-        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        return CGSize(width: screen.width * 0.85, height: screen.height * 0.85)
     }
 
     private func close() {
         if let m = globalMonitor { NSEvent.removeMonitor(m); globalMonitor = nil }
-        cleanup()
-        NSApp.terminate(nil)
+        cleanup(); NSApp.terminate(nil)
     }
 
-    private func cleanup() {
-        try? FileManager.default.removeItem(atPath: sourcePath)
-    }
+    private func cleanup() { try? FileManager.default.removeItem(atPath: sourcePath) }
 
     func run() {
         let app = NSApplication.shared
@@ -145,7 +149,7 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
 
         let jsonData = (try? JSONSerialization.data(withJSONObject: content,
                                                     options: .fragmentsAllowed)) ?? Data("\"\"".utf8)
-        let jsonStr = String(data: jsonData, encoding: .utf8) ?? "\"\""
+        let jsonStr  = String(data: jsonData, encoding: .utf8) ?? "\"\""
         let injection = WKUserScript(source: "window.__content__ = \(jsonStr);",
                                      injectionTime: .atDocumentStart,
                                      forMainFrameOnly: true)
@@ -154,13 +158,11 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
         config.userContentController.add(self, name: "action")
         config.userContentController.add(self, name: "resize")
 
-        // Start with a reasonable placeholder size; JS will resize after render
         let rect = NSRect(x: 0, y: 0, width: 680, height: 480)
 
         window = NSWindow(contentRect: rect,
-                          styleMask: [.borderless, .resizable],
-                          backing: .buffered,
-                          defer: false)
+                          styleMask: [.borderless],
+                          backing: .buffered, defer: false)
         window.isOpaque = false
         window.backgroundColor = .clear
         window.hasShadow = true
@@ -169,8 +171,8 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
         window.isMovableByWindowBackground = true
         window.center()
 
-        // Glass background layer
-        let vfx = NSVisualEffectView(frame: rect)
+        // Glass layer — this is the single clipping boundary
+        vfx = NSVisualEffectView(frame: rect)
         vfx.autoresizingMask = [.width, .height]
         vfx.material = .hudWindow
         vfx.blendingMode = .behindWindow
@@ -179,13 +181,10 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
         vfx.layer?.cornerRadius = 20
         vfx.layer?.masksToBounds = true
 
-        // WebView clipped to the same rounded shape
+        // WebView: transparent, clipped by the VFX view above — no extra cornerRadius
         webView = WKWebView(frame: rect, configuration: config)
         webView.autoresizingMask = [.width, .height]
         webView.setValue(false, forKey: "drawsBackground")
-        webView.wantsLayer = true
-        webView.layer?.cornerRadius = 20
-        webView.layer?.masksToBounds = true
 
         vfx.addSubview(webView)
         window.contentView = vfx
@@ -193,7 +192,6 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
         let baseURL = URL(fileURLWithPath: NSTemporaryDirectory(), isDirectory: true)
         webView.loadHTMLString(html, baseURL: baseURL)
 
-        // Click outside → close
         globalMonitor = NSEvent.addGlobalMonitorForEvents(
             matching: [.leftMouseDown, .rightMouseDown]
         ) { [weak self] _ in
@@ -207,6 +205,8 @@ class MermaidViewer: NSObject, WKScriptMessageHandler {
 
         window.makeKeyAndOrderFront(nil)
         app.activate(ignoringOtherApps: true)
+        // Recompute shadow from actual rendered (rounded) pixels
+        DispatchQueue.main.async { self.window.invalidateShadow() }
         app.run()
     }
 }
