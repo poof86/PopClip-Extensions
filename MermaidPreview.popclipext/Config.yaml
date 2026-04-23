@@ -1,0 +1,20 @@
+name: Mermaid Preview
+identifier: com.popclip.extension.mermaid-preview
+description: Render selected Mermaid diagram syntax. Quick View shows the SVG instantly; Quick Editor opens a live editor where you can tweak the diagram and copy the result back.
+icon: square filled M
+requirements: [text]
+regex: '(?s).*(```mermaid|graph\s|flowchart\s|sequenceDiagram[\s\n]|classDiagram[\s\n]|stateDiagram|erDiagram|gantt[\s\n]|pie[\s\n]|gitGraph|mindmap[\s\n]|timeline[\s\n]|xychart-beta[\s\n]|quadrantChart[\s\n]).*'
+options:
+  - identifier: previewmode
+    label: Preview Mode
+    type: multiple
+    values: [quickview, quickeditor]
+    valueLabels: ["Quick View", "Quick Editor"]
+    defaultValue: quickview
+    description: "Quick View: render to SVG and show in a floating window (requires mmdc or internet). Quick Editor: open a live WKWebView editor powered by mermaid.js via esm.sh."
+actions:
+  - title: Mermaid Preview
+    icon: square filled M
+    interpreter: /bin/zsh
+    stoppable: true
+    shellScriptFile: mermaid_preview.zsh
