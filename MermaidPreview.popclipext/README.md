@@ -1,31 +1,34 @@
 # Mermaid Preview
 
-A PopClip extension that renders selected [Mermaid](https://mermaid.js.org/) diagram syntax and displays it in a floating Quick Look window.
+A PopClip extension that renders selected [Mermaid](https://mermaid.js.org/) diagram syntax. Two modes are available via the extension settings:
+
+| Mode | How it works |
+|------|-------------|
+| **Quick View** | Renders the diagram to SVG (via `mmdc` or mermaid.ink) and displays it in a floating Quick Look window. Press Space or Esc to close. |
+| **Quick Editor** | Opens a floating split-pane editor: live mermaid.js preview on the right, editable source on the left. Click **Copy & Close** to put the edited source on the clipboard ready to paste back. |
 
 ## Usage
 
-Select any Mermaid diagram — either a fenced code block or raw syntax — then click the **M** button in PopClip.
+Select any Mermaid diagram — a fenced code block or raw syntax — then click the **M** button in PopClip. Change the mode in PopClip's extension settings (long-press the M button or open preferences).
 
 ```mermaid
 graph TD
     A[Select mermaid text] --> B[Click M in PopClip]
-    B --> C[Diagram rendered in floating window]
+    B -->|Quick View| C[Floating SVG preview]
+    B -->|Quick Editor| D[Live editor window]
+    D --> E[Edit diagram]
+    E --> F[Copy & Close → paste back]
 ```
-
-Press **Space** or **Esc** to close the preview.
 
 ## Requirements
 
-- macOS with Xcode Command Line Tools (`swift` at `/usr/bin/swift`)
-- For local rendering: [mermaid-cli](https://github.com/mermaid-js/mermaid-cli) (`mmdc`)
+- macOS 12+ (WKWebView ES module support)
+- Xcode Command Line Tools — provides `/usr/bin/swift` used to run the Swift scripts
+- **Quick View only:** internet access **or** [mermaid-cli](https://github.com/mermaid-js/mermaid-cli) installed locally:
   ```
   npm install -g @mermaid-js/mermaid-cli
   ```
-- Without `mmdc`, diagrams are rendered via [mermaid.ink](https://mermaid.ink) (requires internet)
-
-## Supported diagram types
-
-The button appears when the selection contains any of: `graph`, `flowchart`, `sequenceDiagram`, `classDiagram`, `stateDiagram`, `erDiagram`, `gantt`, `pie`, `gitGraph`, `mindmap`, `timeline`, `xychart-beta`, `quadrantChart`, or a fenced ` ```mermaid ` block.
+- **Quick Editor:** internet access (loads mermaid.js from [esm.sh](https://esm.sh/mermaid) — always the latest version)
 
 ## Installation
 
@@ -33,6 +36,7 @@ Double-click `MermaidPreview.popclipext` to install.
 
 ## Notes
 
-- `qlf.swift` is compiled by Swift on first use — expect a few seconds' delay the first time.
-- The temp SVG file is deleted automatically when the preview window closes.
-- Diagrams are rendered locally with `mmdc` when available; the online fallback sends diagram source to mermaid.ink.
+- Both `qlf.swift` and `mermaid_editor.swift` are compiled by Swift on first use — expect a few seconds' delay the first time each mode is run.
+- Temp files (`.svg` for Quick View, `.mmd` for Quick Editor) are deleted automatically when the window closes.
+- Quick View falls back to [mermaid.ink](https://mermaid.ink) when `mmdc` is not installed; diagram source is sent to that service.
+- Quick Editor always renders client-side via mermaid.js — nothing is sent to any server.
