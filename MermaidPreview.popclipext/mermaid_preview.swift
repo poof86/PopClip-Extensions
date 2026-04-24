@@ -36,7 +36,7 @@ private let html = #"""
     touch-action: none;
   }
   #viewer-content.dragging { cursor: grabbing; }
-  #v-output { position: absolute; transform-origin: 0 0; }
+  #v-output { position: absolute; transform-origin: 0 0; pointer-events: none; }
   #v-output:empty { display: none; }
   #v-output svg { display: block; }
   #v-error {
@@ -298,11 +298,21 @@ private let html = #"""
       await new Promise(r => requestAnimationFrame(r));
       const svgEl = vOutput.querySelector('svg');
       if (svgEl) {
-        const rect = svgEl.getBoundingClientRect();
-        naturalW = rect.width;
-        naturalH = rect.height;
-        // Tell Swift to size the window to match the diagram's aspect ratio,
-        // then fit the SVG into whatever viewport we end up with.
+        // Mermaid v10+ emits width="100%" which makes the SVG resize with its
+        // container. Read the true logical size from viewBox and pin explicit
+        // pixel dimensions so measurement and transform math are stable.
+        const vb = svgEl.viewBox?.baseVal;
+        if (vb && vb.width > 0 && vb.height > 0) {
+          svgEl.setAttribute('width',  String(vb.width));
+          svgEl.setAttribute('height', String(vb.height));
+          svgEl.style.maxWidth = '';
+          naturalW = vb.width;
+          naturalH = vb.height;
+        } else {
+          const r = svgEl.getBoundingClientRect();
+          naturalW = r.width  || 680;
+          naturalH = r.height || 480;
+        }
         bridge({ type: 'resize', width: naturalW, height: naturalH });
         fitToViewport();
       }
@@ -358,6 +368,13 @@ private let html = #"""
 </body>
 </html>
 """#
+
+// Sits above the WKWebView in the top 28 px strip. Captures mouseDown so
+// AppKit moves the window natively; everything below reaches the webview.
+class TitleDragView: NSView {
+    override func mouseDown(with event: NSEvent) { window?.performDrag(with: event) }
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
+}
 
 class MermaidPreview: NSObject, WKScriptMessageHandler {
     var window: NSWindow!
@@ -437,37 +454,6 @@ class MermaidPreview: NSObject, WKScriptMessageHandler {
     }
 
     private func cleanup() { try? FileManager.default.removeItem(atPath: sourcePath) }
-    
-    @objc func handleWindowDrag(_ gesture: NSPanGestureRecognizer) {
-        // 1. We must use the contentView as the reference point for the location.
-        // This is the only way to get the click position from the gesture.
-        guard let contentView = window.contentView else { return }
-        let locationInView = gesture.location(in: contentView)
-        
-        // 2. THE GATEKEEPER:
-        // We check if the click hit the webView.
-        // We check the webView's frame in the contentView's coordinate space.
-        if let webView = contentView.subviews.first(where: { $0 is WKWebView }),
-           webView.frame.contains(locationInView) {
-            
-            // If the click is inside the webView, we do nothing.
-            // This allows the webView to handle its own buttons/text.
-            // We reset the translation so it doesn't "drift"
-            gesture.setTranslation(.zero, in: contentView)
-            return
-        }
-
-        // 3. THE DRAG:
-        // If we are here, the click was on the background/vfx/drag-strip.
-        // We use the native macOS drag method.
-        // We use the current event from the application.
-        if let event = NSApp.currentEvent {
-            window.performDrag(with: event)
-        }
-        
-        // 4. Safety Reset
-        gesture.setTranslation(.zero, in: contentView)
-    }
 
     func run() {
         let app = NSApplication.shared
@@ -495,7 +481,7 @@ class MermaidPreview: NSObject, WKScriptMessageHandler {
         window.hasShadow = true
         window.level = .floating
         window.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
-        window.isMovableByWindowBackground = true
+        window.isMovableByWindowBackground = false
         window.center()
         window.standardWindowButton(.closeButton)?.isHidden = true
         window.standardWindowButton(.miniaturizeButton)?.isHidden = true
@@ -512,13 +498,14 @@ class MermaidPreview: NSObject, WKScriptMessageHandler {
         webView.setValue(false, forKey: "drawsBackground")
         vfx.addSubview(webView)
 
-        // Native drag strip: intercepts mouseDown in the top 28 px so
-        // AppKit can move the window; events below it reach the webview.
-        //let dragH    = CGFloat(28)
-        //let dragView = TitleDragView(frame: NSRect(x: 0, y: rect.height - dragH,
-        //                                           width: rect.width, height: dragH))
-        //dragView.autoresizingMask = [.width, .minYMargin]
-        //vfx.addSubview(dragView)
+        // TitleDragView sits over the top 28 px. Because isMovableByWindowBackground
+        // is false, only this native view triggers window moves; the WKWebView
+        // below handles all other pointer events without AppKit interference.
+        let dragH    = CGFloat(28)
+        let dragView = TitleDragView(frame: NSRect(x: 0, y: rect.height - dragH,
+                                                   width: rect.width, height: dragH))
+        dragView.autoresizingMask = [.width, .minYMargin]
+        vfx.addSubview(dragView)
 
         window.contentView = vfx
 
@@ -536,9 +523,6 @@ class MermaidPreview: NSObject, WKScriptMessageHandler {
             forName: NSWindow.willCloseNotification, object: window, queue: .main
         ) { [weak self] _ in self?.close() }
         
-        let windowDragGesture = NSPanGestureRecognizer(target: self, action: #selector(handleWindowDrag(_:)))
-        window.contentView?.addGestureRecognizer(windowDragGesture)
-
         window.makeKeyAndOrderFront(nil)
         app.activate(ignoringOtherApps: true)
         app.run()
