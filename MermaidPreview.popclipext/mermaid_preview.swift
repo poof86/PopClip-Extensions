@@ -33,6 +33,7 @@ private let html = #"""
     overflow: hidden;
     cursor: grab;
     user-select: none;
+    touch-action: none;
   }
   #viewer-content.dragging { cursor: grabbing; }
   #v-output { position: absolute; transform-origin: 0 0; }
@@ -254,27 +255,36 @@ private let html = #"""
     applyPZ();
   }, { passive: false });
 
-  viewerContent.addEventListener('mousedown', e => {
+  // Pointer events + setPointerCapture so AppKit's isMovableByWindowBackground
+  // can't swallow the drag before JS sees it.
+  viewerContent.addEventListener('pointerdown', e => {
     if (e.button !== 0) return;
     vDragging = true;
     vDragSX = e.clientX; vDragSY = e.clientY;
     vDragSTX = pz.tx;    vDragSTY = pz.ty;
     viewerContent.classList.add('dragging');
+    viewerContent.setPointerCapture(e.pointerId);
     e.preventDefault();
   });
-  window.addEventListener('mousemove', e => {
+  viewerContent.addEventListener('pointermove', e => {
     if (!vDragging) return;
     pz.tx = vDragSTX + (e.clientX - vDragSX);
     pz.ty = vDragSTY + (e.clientY - vDragSY);
     applyPZ();
   });
-  window.addEventListener('mouseup', () => {
+  viewerContent.addEventListener('pointerup', e => {
     if (!vDragging) return;
+    vDragging = false;
+    viewerContent.classList.remove('dragging');
+    viewerContent.releasePointerCapture(e.pointerId);
+  });
+  viewerContent.addEventListener('pointercancel', () => {
     vDragging = false;
     viewerContent.classList.remove('dragging');
   });
   viewerContent.addEventListener('dblclick', fitToViewport);
-  window.addEventListener('resize', () => { if (!isEditing) fitToViewport(); });
+  // ResizeObserver is more reliable than window 'resize' for WKWebView reflows.
+  new ResizeObserver(() => { if (!isEditing) fitToViewport(); }).observe(viewerContent);
 
   // ── Viewer ──────────────────────────────────────────────────────────────────
 
@@ -393,12 +403,26 @@ class MermaidPreview: NSObject, WKScriptMessageHandler {
     }
 
     private func resizeToFit(svgWidth: CGFloat, svgHeight: CGFloat) {
-        // 28 drag strip + 16 gap + 36 footer row + 24 bottom pad + 8 top pad
-        let chrome: CGFloat = 112
-        let hPad:   CGFloat = 64
-        let screen = NSScreen.main?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
-        let newW = min(max(svgWidth  + hPad,    360), screen.width  * 0.85)
-        let newH = min(max(svgHeight + chrome,  260), screen.height * 0.85)
+        // Non-diagram chrome: 28 px drag strip + ~59 px footer (padding + button).
+        let chromeH: CGFloat = 87
+        // Use the editor dimensions as the maximum bounding box.
+        let maxW: CGFloat = 960
+        let maxH: CGFloat = 620
+        let minW: CGFloat = 320
+        let minH: CGFloat = 260
+
+        // Scale the diagram to fill the available area at its natural aspect ratio.
+        let aspect   = svgWidth / max(svgHeight, 1)
+        let availH   = maxH - chromeH          // max content height
+        var contentW = maxW
+        var contentH = contentW / aspect
+        if contentH > availH {
+            contentH = availH
+            contentW = contentH * aspect
+        }
+
+        let newW = max(minW, contentW).rounded()
+        let newH = max(minH, contentH + chromeH).rounded()
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             self.window.setContentSize(NSSize(width: newW, height: newH))
