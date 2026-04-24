@@ -17,4 +17,4 @@ INPUT=$(printf '%s\n' "$POPCLIP_TEXT" | perl -0777 -ne 'print /```mermaid\s*(.*?
 TEMP_SOURCE="${TMPDIR:-/tmp/}mermaid_$(/usr/bin/uuidgen).mmd"
 printf '%s\n' "$INPUT" > "$TEMP_SOURCE"
 
-/usr/bin/swift "$SCRIPT_DIR/mermaid_preview.swift" "$TEMP_SOURCE" &
+/usr/bin/swift "$SCRIPT_DIR/mermaid_preview.swift" "$TEMP_SOURCE" > /dev/null 2>&1 &
