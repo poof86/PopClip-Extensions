@@ -101,6 +101,8 @@ private let html = #"""
     resize: none;
     outline: none;
     tab-size: 2;
+    white-space: pre;
+    overflow-x: auto;
   }
   textarea:focus {
     border-color: rgba(255, 255, 255, 0.22);
@@ -131,13 +133,15 @@ private let html = #"""
   }
   #preview-pane {
     flex: 1;
-    overflow: auto;
-    padding: 24px;
-    display: flex;
-    align-items: flex-start;
-    justify-content: center;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+    user-select: none;
+    touch-action: none;
   }
-  #e-output svg { max-width: 100%; height: auto; display: block; }
+  #preview-pane.dragging { cursor: grabbing; }
+  #e-output { position: absolute; transform-origin: 0 0; pointer-events: none; }
+  #e-output svg { display: block; }
   #e-output:empty { display: none; }
 
   /* ═══════════════════ SHARED BUTTON ═══════════════════ */
@@ -203,8 +207,9 @@ private let html = #"""
   const vOutput      = document.getElementById('v-output');
   const vError       = document.getElementById('v-error');
   const viewerContent= document.getElementById('viewer-content');
-  const eOutput = document.getElementById('e-output');
-  const eStatus = document.getElementById('e-status');
+  const eOutput      = document.getElementById('e-output');
+  const eStatus      = document.getElementById('e-status');
+  const previewPane  = document.getElementById('preview-pane');
   const input   = document.getElementById('input');
   const viewer  = document.getElementById('viewer');
   const editor  = document.getElementById('editor');
@@ -327,9 +332,75 @@ private let html = #"""
     viewer.style.display = 'none';
     editor.style.display = 'flex';
     input.value = currentContent;
+    eNaturalW = 0; eNaturalH = 0;   // reset so first render will auto-fit
+    Object.assign(ePZ, { scale: 1, tx: 0, ty: 0 });
     renderEditor();
     bridge({ type: 'edit' });
   };
+
+  // ── Editor pan/zoom ──────────────────────────────────────────────────────────
+
+  let eNaturalW = 0, eNaturalH = 0;
+  const ePZ = { scale: 1, tx: 0, ty: 0 };
+  let eDragging = false, eDragSX = 0, eDragSY = 0, eDragSTX = 0, eDragSTY = 0;
+
+  function applyEPZ() {
+    eOutput.style.transform = `translate(${ePZ.tx}px,${ePZ.ty}px) scale(${ePZ.scale})`;
+  }
+
+  function fitEditorViewport() {
+    if (!eNaturalW || !eNaturalH) return;
+    const cW = previewPane.clientWidth;
+    const cH = previewPane.clientHeight;
+    if (!cW || !cH) return;
+    const s = Math.min(1, cW / eNaturalW, cH / eNaturalH);
+    ePZ.scale = s;
+    ePZ.tx = (cW - eNaturalW * s) / 2;
+    ePZ.ty = (cH - eNaturalH * s) / 2;
+    applyEPZ();
+  }
+
+  previewPane.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = previewPane.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    const newS = Math.max(0.05, Math.min(10, ePZ.scale * factor));
+    const ratio = newS / ePZ.scale;
+    ePZ.tx = mx - (mx - ePZ.tx) * ratio;
+    ePZ.ty = my - (my - ePZ.ty) * ratio;
+    ePZ.scale = newS;
+    applyEPZ();
+  }, { passive: false });
+
+  previewPane.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    eDragging = true;
+    eDragSX = e.clientX; eDragSY = e.clientY;
+    eDragSTX = ePZ.tx;   eDragSTY = ePZ.ty;
+    previewPane.classList.add('dragging');
+    previewPane.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  previewPane.addEventListener('pointermove', e => {
+    if (!eDragging) return;
+    ePZ.tx = eDragSTX + (e.clientX - eDragSX);
+    ePZ.ty = eDragSTY + (e.clientY - eDragSY);
+    applyEPZ();
+  });
+  previewPane.addEventListener('pointerup', e => {
+    if (!eDragging) return;
+    eDragging = false;
+    previewPane.classList.remove('dragging');
+    previewPane.releasePointerCapture(e.pointerId);
+  });
+  previewPane.addEventListener('pointercancel', () => {
+    eDragging = false;
+    previewPane.classList.remove('dragging');
+  });
+  previewPane.addEventListener('dblclick', fitEditorViewport);
+  new ResizeObserver(() => { if (isEditing) fitEditorViewport(); }).observe(previewPane);
 
   // ── Editor ──────────────────────────────────────────────────────────────────
 
@@ -345,8 +416,29 @@ private let html = #"""
       await mermaid.parse(text);             // throws on bad syntax — no bomb SVG
       const { svg } = await mermaid.render('mmd-edit-' + seq, text);
       if (seq !== editorSeq) return;
+      eOutput.style.transform = '';
       eOutput.innerHTML = svg;
       eStatus.textContent = ''; eStatus.className = '';
+      await new Promise(r => requestAnimationFrame(r));
+      const svgEl = eOutput.querySelector('svg');
+      if (svgEl) {
+        // Only auto-fit on the first render after the editor opens.
+        // Subsequent renders (while typing) leave the user's zoom/pan alone.
+        const firstRender = !eNaturalW;
+        const vb = svgEl.viewBox?.baseVal;
+        if (vb && vb.width > 0 && vb.height > 0) {
+          svgEl.setAttribute('width',  String(vb.width));
+          svgEl.setAttribute('height', String(vb.height));
+          svgEl.style.maxWidth = '';
+          eNaturalW = vb.width;
+          eNaturalH = vb.height;
+        } else {
+          const r = svgEl.getBoundingClientRect();
+          eNaturalW = r.width  || 400;
+          eNaturalH = r.height || 300;
+        }
+        if (firstRender) fitEditorViewport();
+      }
     } catch (e) {
       if (seq !== editorSeq) return;
       eOutput.innerHTML = '';
