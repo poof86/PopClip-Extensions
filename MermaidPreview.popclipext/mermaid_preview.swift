@@ -29,16 +29,19 @@ private let html = #"""
   }
   #viewer-content {
     flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 8px 32px 24px;
-    gap: 16px;
+    position: relative;
+    overflow: hidden;
+    cursor: grab;
+    user-select: none;
   }
+  #viewer-content.dragging { cursor: grabbing; }
+  #v-output { position: absolute; transform-origin: 0 0; }
   #v-output:empty { display: none; }
-  #v-output svg { max-width: 100%; height: auto; display: block; }
+  #v-output svg { display: block; }
   #v-error {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
     color: rgba(200, 60, 60, 0.95);
     font-size: 12px;
     font-family: 'SF Mono', Menlo, monospace;
@@ -47,13 +50,15 @@ private let html = #"""
     background: rgba(255,255,255,0.88);
     padding: 14px 16px;
     border-radius: 10px;
-    max-width: 100%;
+    max-width: calc(100% - 32px);
   }
   #v-error:empty { display: none; }
   #viewer-footer {
     display: flex;
     align-items: center;
-    gap: 20px;
+    justify-content: space-between;
+    padding: 10px 24px 16px;
+    flex-shrink: 0;
   }
   #hint {
     font-size: 12px;
@@ -159,10 +164,10 @@ private let html = #"""
   <div id="viewer-content">
     <div id="v-output"></div>
     <div id="v-error"></div>
-    <div id="viewer-footer">
-      <p id="hint">Click outside or Esc to close</p>
-      <button onclick="switchToEditor()">Edit</button>
-    </div>
+  </div>
+  <div id="viewer-footer">
+    <p id="hint">Scroll to zoom · Drag to pan · Dbl-click to reset · Esc to close</p>
+    <button onclick="switchToEditor()">Edit</button>
   </div>
 </div>
 
@@ -194,8 +199,9 @@ private let html = #"""
   let debounceTimer = null;
   let isEditing = false;
 
-  const vOutput = document.getElementById('v-output');
-  const vError  = document.getElementById('v-error');
+  const vOutput      = document.getElementById('v-output');
+  const vError       = document.getElementById('v-error');
+  const viewerContent= document.getElementById('viewer-content');
   const eOutput = document.getElementById('e-output');
   const eStatus = document.getElementById('e-status');
   const input   = document.getElementById('input');
@@ -211,20 +217,85 @@ private let html = #"""
     if (e.key === ' ' && !isEditing) bridge({ type: 'close' });
   });
 
+  // ── Viewer pan/zoom ──────────────────────────────────────────────────────────
+
+  let naturalW = 0, naturalH = 0;
+  const pz = { scale: 1, tx: 0, ty: 0 };
+  let vDragging = false, vDragSX = 0, vDragSY = 0, vDragSTX = 0, vDragSTY = 0;
+
+  function applyPZ() {
+    vOutput.style.transform = `translate(${pz.tx}px,${pz.ty}px) scale(${pz.scale})`;
+  }
+
+  function fitToViewport() {
+    if (!naturalW || !naturalH) return;
+    const cW = viewerContent.clientWidth;
+    const cH = viewerContent.clientHeight;
+    if (!cW || !cH) return;
+    // Window sizing already adds padding around the SVG; no extra pad needed here.
+    const s = Math.min(1, cW / naturalW, cH / naturalH);
+    pz.scale = s;
+    pz.tx = (cW - naturalW * s) / 2;
+    pz.ty = (cH - naturalH * s) / 2;
+    applyPZ();
+  }
+
+  viewerContent.addEventListener('wheel', e => {
+    e.preventDefault();
+    const rect = viewerContent.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+    const newS = Math.max(0.05, Math.min(10, pz.scale * factor));
+    const ratio = newS / pz.scale;
+    pz.tx = mx - (mx - pz.tx) * ratio;
+    pz.ty = my - (my - pz.ty) * ratio;
+    pz.scale = newS;
+    applyPZ();
+  }, { passive: false });
+
+  viewerContent.addEventListener('mousedown', e => {
+    if (e.button !== 0) return;
+    vDragging = true;
+    vDragSX = e.clientX; vDragSY = e.clientY;
+    vDragSTX = pz.tx;    vDragSTY = pz.ty;
+    viewerContent.classList.add('dragging');
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', e => {
+    if (!vDragging) return;
+    pz.tx = vDragSTX + (e.clientX - vDragSX);
+    pz.ty = vDragSTY + (e.clientY - vDragSY);
+    applyPZ();
+  });
+  window.addEventListener('mouseup', () => {
+    if (!vDragging) return;
+    vDragging = false;
+    viewerContent.classList.remove('dragging');
+  });
+  viewerContent.addEventListener('dblclick', fitToViewport);
+  window.addEventListener('resize', () => { if (!isEditing) fitToViewport(); });
+
   // ── Viewer ──────────────────────────────────────────────────────────────────
 
   window.renderContent = async function(text) {
     currentContent = text;
     try {
       const { svg } = await mermaid.render('mmd-view', text.trim());
+      vOutput.style.transform = '';
       vOutput.innerHTML = svg;
       vError.textContent = '';
-      requestAnimationFrame(() => {
-        const svgEl = vOutput.querySelector('svg');
-        if (!svgEl) return;
-        const { width, height } = svgEl.getBoundingClientRect();
-        bridge({ type: 'resize', width, height });
-      });
+      await new Promise(r => requestAnimationFrame(r));
+      const svgEl = vOutput.querySelector('svg');
+      if (svgEl) {
+        const rect = svgEl.getBoundingClientRect();
+        naturalW = rect.width;
+        naturalH = rect.height;
+        // Tell Swift to size the window to match the diagram's aspect ratio,
+        // then fit the SVG into whatever viewport we end up with.
+        bridge({ type: 'resize', width: naturalW, height: naturalH });
+        fitToViewport();
+      }
     } catch (e) {
       vOutput.innerHTML = '';
       vError.textContent = e.message ?? String(e);
